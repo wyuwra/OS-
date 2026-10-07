@@ -1,0 +1,106 @@
+The target architecture is set to "riscv:rv64".
+0x0000000000001000 in ?? ()
+Breakpoint 1 at 0x80200000: file kern/init/entry.S, line 7.
+
+Breakpoint 1, kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+
+=== A: kernel entry, before stack initialization ===
+pc             0x80200000	0x80200000 <kern_entry>
+sp             0x8001bd80	0x8001bd80
+ra             0x80000a02	0x80000a02
+$1 = 0x80201000
+$2 = 0x80203000
+$3 = 8192
+=> 0x80200000 <kern_entry>:	auipc	sp,0x3
+   0x80200004 <kern_entry+4>:	mv	sp,sp
+   0x80200008 <kern_entry+8>:	j	0x8020000a <kern_init>
+0x0000000080200004 in kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+9	    tail kern_init
+
+=== B: after la sp, bootstacktop ===
+pc             0x80200008	0x80200008 <kern_entry+8>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+ra             0x80000a02	0x80000a02
+PASS: sp equals bootstacktop and is 16-byte aligned
+kern_init () at kern/init/init.c:8
+8	    memset(edata, 0, end - edata);
+
+=== C: after tail kern_init ===
+pc             0x8020000a	0x8020000a <kern_init>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+ra             0x80000a02	0x80000a02
+PASS: pc equals kern_init; tail did not change ra
+Dump of assembler code for function kern_init:
+=> 0x000000008020000a <+0>:	00003517        	auipc	a0,0x3
+   0x000000008020000e <+4>:	ffe50513        	addi	a0,a0,-2 # 0x80203008
+   0x0000000080200012 <+8>:	00003617        	auipc	a2,0x3
+   0x0000000080200016 <+12>:	ff660613        	addi	a2,a2,-10 # 0x80203008
+   0x000000008020001a <+16>:	1141              	addi	sp,sp,-16
+   0x000000008020001c <+18>:	4581              	li	a1,0
+   0x000000008020001e <+20>:	8e09              	sub	a2,a2,a0
+   0x0000000080200020 <+22>:	e406              	sd	ra,8(sp)
+   0x0000000080200022 <+24>:	49c000ef        	jal	0x802004be <memset>
+   0x0000000080200026 <+28>:	00000597        	auipc	a1,0x0
+   0x000000008020002a <+32>:	4aa58593        	addi	a1,a1,1194 # 0x802004d0
+   0x000000008020002e <+36>:	00000517        	auipc	a0,0x0
+   0x0000000080200032 <+40>:	4c250513        	addi	a0,a0,1218 # 0x802004f0
+   0x0000000080200036 <+44>:	020000ef        	jal	0x80200056 <cprintf>
+   0x000000008020003a <+48>:	a001              	j	0x8020003a <kern_init+48>
+End of assembler dump.
+Temporary breakpoint 2 at 0x80200022: file kern/init/init.c, line 8.
+
+Temporary breakpoint 2, 0x0000000080200022 in kern_init () at kern/init/init.c:8
+8	    memset(edata, 0, end - edata);
+
+=== D: C prologue, before calling memset ===
+pc             0x80200022	0x80200022 <kern_init+24>
+sp             0x80202ff0	0x80202ff0
+ra             0x80000a02	0x80000a02
+a0             0x80203008	2149593096
+a1             0x0	0
+a2             0x0	0
+0x80202ff8:	0x0000000080000a02
+PASS: 16-byte stack frame; incoming ra saved at sp+8; memset length is 0
+memset (s=0x80203008, c=c@entry=0 '\000', n=18446744073709551615) at libs/string.c:275
+275	    while (n -- > 0) {
+
+=== E: jal to memset creates a new return address ===
+pc             0x802004be	0x802004be <memset>
+sp             0x80202ff0	0x80202ff0
+ra             0x80200026	0x80200026 <kern_init+28>
+PASS: jal sets ra to 0x80200026
+278	    return s;
+
+=== E2: zero-length memset branches directly to ret ===
+pc             0x802004ce	0x802004ce <memset+16>
+a2             0x0	0
+PASS: beqz a2 bypassed the store loop; no memory store executed
+kern_init () at kern/init/init.c:11
+11	    cprintf("%s\n\n", message);
+
+=== F: returned from memset ===
+pc             0x80200026	0x80200026 <kern_init+28>
+sp             0x80202ff0	0x80202ff0
+ra             0x80200026	0x80200026 <kern_init+28>
+PASS: ret returns to 0x80200026
+Temporary breakpoint 3 at 0x8020003a: file kern/init/init.c, line 13.
+
+Temporary breakpoint 3, kern_init () at kern/init/init.c:13
+13	        ;
+
+=== G: terminal loop after cprintf ===
+pc             0x8020003a	0x8020003a <kern_init+48>
+sp             0x80202ff0	0x80202ff0
+ra             0x8020003a	0x8020003a <kern_init+48>
+=> 0x8020003a <kern_init+48>:	j	0x8020003a <kern_init+48>
+13	        ;
+13	        ;
+PASS: two single steps keep pc at the terminal loop
+$4 = 0x80203008
+$5 = 0x80203008
+$6 = 0
+
+ALL EXERCISE 1 CHECKS PASSED
+[Inferior 1 (process 1) detached]

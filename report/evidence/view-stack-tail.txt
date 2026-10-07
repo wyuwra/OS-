@@ -1,0 +1,27 @@
+=== A: kernel entry, before stack initialization ===
+pc             0x80200000	0x80200000 <kern_entry>
+sp             0x8001bd80	0x8001bd80
+ra             0x80000a02	0x80000a02
+$1 = 0x80201000
+$2 = 0x80203000
+$3 = 8192
+=> 0x80200000 <kern_entry>:	auipc	sp,0x3
+   0x80200004 <kern_entry+4>:	mv	sp,sp
+   0x80200008 <kern_entry+8>:	j	0x8020000a <kern_init>
+0x0000000080200004 in kern_entry () at kern/init/entry.S:7
+7	    la sp, bootstacktop
+9	    tail kern_init
+
+=== B: after la sp, bootstacktop ===
+pc             0x80200008	0x80200008 <kern_entry+8>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+ra             0x80000a02	0x80000a02
+PASS: sp equals bootstacktop and is 16-byte aligned
+kern_init () at kern/init/init.c:8
+8	    memset(edata, 0, end - edata);
+
+=== C: after tail kern_init ===
+pc             0x8020000a	0x8020000a <kern_init>
+sp             0x80203000	0x80203000 <SBI_CONSOLE_PUTCHAR>
+ra             0x80000a02	0x80000a02
+PASS: pc equals kern_init; tail did not change ra

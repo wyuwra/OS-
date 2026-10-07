@@ -1,0 +1,12 @@
+0000000080200000 <kern_entry>:
+    80200000:	00003117          	auipc	sp,0x3
+    80200004:	00010113          	mv	sp,sp
+    80200008:	a009                	j	8020000a <kern_init>
+00000000802004be <memset>:
+    802004be:	ca01                	beqz	a2,802004ce <memset+0x10>
+    802004c0:	962a                	add	a2,a2,a0
+    802004c2:	87aa                	mv	a5,a0
+    802004c4:	0785                	addi	a5,a5,1
+    802004c6:	feb78fa3          	sb	a1,-1(a5)
+    802004ca:	fec79de3          	bne	a5,a2,802004c4 <memset+0x6>
+    802004ce:	8082                	ret

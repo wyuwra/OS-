@@ -1,0 +1,35 @@
+=== D: C prologue, before calling memset ===
+pc             0x80200022	0x80200022 <kern_init+24>
+sp             0x80202ff0	0x80202ff0
+ra             0x80000a02	0x80000a02
+a0             0x80203008	2149593096
+a1             0x0	0
+a2             0x0	0
+0x80202ff8:	0x0000000080000a02
+PASS: 16-byte stack frame; incoming ra saved at sp+8; memset length is 0
+memset (s=0x80203008, c=c@entry=0 '\000', n=18446744073709551615) at libs/string.c:275
+275	    while (n -- > 0) {
+
+=== E: jal to memset creates a new return address ===
+pc             0x802004be	0x802004be <memset>
+sp             0x80202ff0	0x80202ff0
+ra             0x80200026	0x80200026 <kern_init+28>
+PASS: jal sets ra to 0x80200026
+278	    return s;
+
+=== E2: zero-length memset branches directly to ret ===
+pc             0x802004ce	0x802004ce <memset+16>
+a2             0x0	0
+PASS: beqz a2 bypassed the store loop; no memory store executed
+kern_init () at kern/init/init.c:11
+11	    cprintf("%s\n\n", message);
+
+=== F: returned from memset ===
+pc             0x80200026	0x80200026 <kern_init+28>
+sp             0x80202ff0	0x80202ff0
+ra             0x80200026	0x80200026 <kern_init+28>
+PASS: ret returns to 0x80200026
+Temporary breakpoint 3 at 0x8020003a: file kern/init/init.c, line 13.
+
+Temporary breakpoint 3, kern_init () at kern/init/init.c:13
+13	        ;

@@ -1,0 +1,13 @@
+=== G: terminal loop after cprintf ===
+pc             0x8020003a	0x8020003a <kern_init+48>
+sp             0x80202ff0	0x80202ff0
+ra             0x8020003a	0x8020003a <kern_init+48>
+=> 0x8020003a <kern_init+48>:	j	0x8020003a <kern_init+48>
+13	        ;
+13	        ;
+PASS: two single steps keep pc at the terminal loop
+$4 = 0x80203008
+$5 = 0x80203008
+$6 = 0
+
+ALL EXERCISE 1 CHECKS PASSED

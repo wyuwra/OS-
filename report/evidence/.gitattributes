@@ -1,0 +1,6 @@
+# Keep verification commands usable in WSL after a Windows Git checkout.
+*.sh text eol=lf
+*.gdb text eol=lf
+*.py text eol=lf
+# Tool logs retain their original formatting, including trailing spaces.
+*.txt whitespace=-blank-at-eol
