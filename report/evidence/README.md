@@ -33,24 +33,21 @@ python report/evidence/prepare-views.py
 
 这只提取文本片段，不生成截图。
 
-## 待补的真实截图
+## 已补入的真实截图
 
-本次界面截图操作被用户按 Esc 中止，尚未保存 PNG 文件。请本人在 VS Code 打开下列日志，或在 WSL 终端按答辩文档进行实际调试后截图：
+成员一已在 WSL 终端实际执行调试与反汇编命令，保存了下列四张截图。图片已逐张核对，并在主报告和成员一分析中引用。
 
-| 建议截图文件名 | 观察内容 | 可打开的日志 |
+| 截图文件名 | 实际观察内容 | 对应文本证据 |
 |---|---|---|
-| `exercise1-stack-tail.png` | 栈范围、sp 初始化、tail 前后 ra | `view-stack-tail.txt` |
-| `exercise1-frame-call.png` | 栈帧、保存 ra、普通调用及零长度返回 | `view-frame-call.txt` |
-| `exercise1-loop-bss.png` | 自循环与 edata/end | `view-loop-bss.txt` |
-| `exercise1-relocations.png` | 目标文件中的重定位和 tail 指令序列 | `view-relocations.txt` |
-| `exercise1-linked-entry.png` | 链接后入口与 memset 分支 | `view-linked-entry.txt` |
+| [exercise1-stack-tail.png](../images/exercise1-stack-tail.png) | 8 KiB 栈范围、sp 初始化、tail 前后 ra | `view-stack-tail.txt` |
+| [exercise1-frame-call.png](../images/exercise1-frame-call.png) | 16 字节栈帧、保存 ra、普通调用及零长度返回 | `view-frame-call.txt` |
+| [exercise1-loop-bss.png](../images/exercise1-loop-bss.png) | 自循环与 edata/end 空范围 | `view-loop-bss.txt` |
+| [exercise1-relocations.png](../images/exercise1-relocations.png) | 目标文件中的重定位与最终内核入口对照 | `elf-analysis.txt` |
 
-保存到 `report/images/`。在 `report.md` 或成员一分析中加入实际图片引用，例如：
+图片保存在 `report/images/`，报告使用相对路径引用，例如：
 
 ```markdown
 ![入口单步日志截图](images/exercise1-stack-tail.png)
 ```
 
-如果截图展示的是编辑器中的日志，应注明“实际 GDB 日志的编辑器截图”，不要称为实时终端截图。建议保留文件名、关键数值和 PASS 行；避免包含与实验无关的聊天、账号或其他项目内容。
-
-不要用原始文本绘制一张仿终端图片，再把它当成实际调试界面截图提交。
+`view-linked-entry.txt` 仍保留为文本证据；不需要为它单独添加第五张截图，现有第四张图片已经包含最终内核入口反汇编。
