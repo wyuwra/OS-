@@ -29,7 +29,7 @@
 
 ## 二、实验环境
 
-| 项目 | 本次成员一验证记录 |
+| 项目 | 实验环境 |
 |---|---|
 | 环境 | Windows 下 Ubuntu WSL2，x86_64 |
 | WSL 内核 | 6.18.40.1-microsoft-standard-WSL2 |
