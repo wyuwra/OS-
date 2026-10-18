@@ -238,7 +238,226 @@ First-Fit 在找到第一个满足申请量的空闲块后就进行分配，拆�
 
 **负责人：** 2413276-胡楚骅
 
-当前已取得的代码中实现区尚未补全。本节待补充：行为规格、实际提示词、选块策略、分配器注册与切换、实际实现过程，以及保留原有测试后的验证结果和改进空间分析。
+**（1）实现与提示词设计**
+
+本模块通过双向循环链表管理空闲物理页，链表按照地址递增排列，每个节点代表一个连续空闲块的首页。首页的 `property` 记录块内页数，`nr_free` 记录全部空闲页总数。初始化时先建立空链表，再接收 `page_init()` 交付的可用物理页，将其登记为空闲块。
+
+与 First-Fit 找到第一个足够大的块就分配不同，`best_alloc_pages()` 需要比较满足申请量的候选块，选择其中页数最少的一块，大小相同时选择地址较低的块。遇到恰好满足申请量的块时，可以提前结束查找。选中后分配前 `n` 页，若有剩余，则重新设置剩余块的首页和长度，放回空闲链表；若没有合适的连续块，则返回 `NULL`，不改变原有管理状态。
+
+释放时，将归还区域按地址顺序插入链表，并检查它与前后空闲块在物理位置上是否连续，能合并时扩大块长度并移除多余节点。保持链表按地址排列，既方便判断相邻关系，也保证同大小候选块按低地址优先选择。最后通过 `best_fit_pmm_manager` 注册各管理接口，并在 `pmm.c` 中切换分配器，使上层仍通过原有接口完成申请和释放。
+
+提示词采用 `[PROMPT]`、`[RELY]`、`[GUARANTEE]` 和 `[SPECIFICATION]` 四段式结构，分别说明任务范围、已有依赖、交付接口和行为规格。规格重点规定了最小适配规则、拆分后剩余块的状态、释放后的相邻合并，以及分配失败时链表和计数保持不变，未逐行限定具体实现步骤。
+
+修改范围限定为 Best-Fit 实现区和分配器选择位置，要求保留两个已有测试函数、公共接口和队友完成的 `page_init()`。验收要求包括正常编译运行、确认实际使用 Best-Fit，并通过已有自检和评分测试。
+
+<details>
+<summary>本任务使用的完整提示词</summary>
+
+````text
+[PROMPT]
+
+任务：
+在操作系统 Lab2 工程中，实现完整的 Best-Fit 连续物理页分配模块，并接入内核。
+
+工程目录为：
+`/home/sven1/course-project/os/OS-/lab2/lab2_new`
+
+以下文件路径均相对于该目录：
+- 在 `kern/mm/best_fit_pmm.c` 的 `//lab2 function2-2 YOUR CODE` 标记处补全实现。
+- 定义 `best_fit_pmm_manager`，并在 `kern/mm/pmm.c` 的 `init_pmm_manager()` 中切换使用它。
+
+Best-Fit 的选块规则是：在所有页数不少于申请量的空闲块中，选择页数最少的一块；大小相同时选择地址较低的块。成功时分配恰好 `n` 个连续物理页，剩余部分继续作为空闲资源管理。
+
+操作要求：
+- 必须修改项目中的实际文件，不能只在对话中展示代码。
+- 开始前检查当前分支、工作区和相关源码，保留已有未提交修改。
+- 修改范围限于 `best_fit_pmm.c` 的待实现区域，以及 `pmm.c` 中 `init_pmm_manager()` 的分配器选择。
+- 不得修改已有的 `basic_check()`、`best_fit_check()`，不得修改公共头文件中的接口、数据结构和宏定义。
+- 不修改队友已完成的 `page_init()`、First-Fit 实现、构建与测试脚本、报告和提示词记录。
+- 保留任务注释，将本任务标记中的 `YOUR CODE` 替换为学号 `2413276`。
+- 可以添加本模块内部需要的静态辅助函数和管理状态，不引入无关功能、依赖或跨文件接口。
+- 暂不执行 Git 提交或推送。
+
+输出与验收要求：
+1. 交付完整实现，满足 `basic_check()`、`best_fit_check()` 使用的状态约定，并通过两个测试，不得修改测试以获得通过。
+2. 必须将 `pmm_manager` 设置为 `&best_fit_pmm_manager`，保证实际运行和检查的是 Best-Fit。
+3. 完成编译和运行验证，终端输出应能明确显示当前策略为 `best_fit_pmm_manager`，并观察分配器自检结果。
+4. 使用现有 `make grade` 入口进行验收，核对 Page Init 和 Best-Fit 的实际结果；不另建测试框架。
+5. 最后说明修改文件、主要内容、验证命令和实际结果。失败或无法执行的检查须说明原因，不得把未验证或单纯超时写成通过。
+
+环境：
+- 编译与运行在 WSL Ubuntu 中进行。
+- 已有 RISC-V 工具链目录：
+  `/home/sven1/course-tools/riscv-elf-toolchains/bin`
+- 本实验使用的 QEMU：
+  `/home/sven1/course-tools/qemu-4.1.1-lab1/install/bin/qemu-system-riscv64`
+- 运行前确认实际使用的工具路径及 QEMU 版本。需要调整时，只修改当前终端环境，不修改全局配置。
+- 可使用现有 `make`、`make qemu`、`make grade`。内核正常运行后会进入循环，应根据实际输出判断结果，并只结束自己启动的测试进程。
+
+[RELY]
+
+以当前工程真实定义为准，使用以下已有接口、数据结构和工具，不重复定义或修改它们。
+
+1. 分配器接口
+- `kern/mm/pmm.h` 中的 `struct pmm_manager` 提供 `name`、`init`、`init_memmap`、`alloc_pages`、`free_pages`、`nr_free_pages`、`check` 成员。
+- `kern/mm/best_fit_pmm.h` 已声明 `best_fit_pmm_manager`，其定义需要在本模块中补全。
+- `kern/mm/pmm.c` 中的上层分配、释放和计数接口，通过当前 `pmm_manager` 调用具体分配器。
+
+2. 页描述符与空闲区结构
+- `kern/mm/memlayout.h` 提供 `struct Page`，包含 `ref`、`flags`、`property`、`page_link`。
+- `Page*` 指向描述符，不是物理页的起始地址；描述符在 `pages` 数组中的顺序对应物理页顺序。
+- 空闲块首页通过 `PG_property` 标识，其 `property` 记录块内连续页数；非首页不能仅凭该字段判断块大小。
+- `free_area_t` 提供空闲链表头 `free_list` 和空闲页总数 `nr_free`。Best-Fit 的具体管理状态需要在本模块内定义。
+
+3. 已有工具
+- `libs/list.h` 提供链表初始化、插入、删除、判空和前后遍历操作。
+- `kern/mm/memlayout.h` 提供保留位、空闲块首页标志的检查与修改宏，以及 `le2page`。
+- `kern/mm/pmm.h` 提供 `page_ref`、`set_page_ref`、`page2pa`，以及测试使用的分配与释放接口。
+- `pages`、`npage`、`nbase` 等由框架维护，不在 Best-Fit 中重复定义或改写。`npage` 是物理页号上界，不是空闲页数。
+
+4. 初始化交接约定
+- 分配器的 `init()` 先执行，随后已有 `page_init()` 通过 `init_memmap(base, n)` 交付可用的连续物理页。
+- 交付时 `n > 0`，描述符范围有效，各页处于保留状态。本模块负责登记空闲资源，不重新实现 DTB 解析或内存布局计算。
+
+5. 参考实现与测试
+- `kern/mm/default_pmm.c` 提供完整 First-Fit，可参考其接口接入和状态维护方式，但应检查其逻辑，不能机械复制。
+- `best_fit_pmm.c` 已提供 `basic_check()` 和 `best_fit_check()`。测试直接引用 `free_list`、`nr_free`，实现必须提供符合其预期的状态，且不得修改测试。
+- `tools/` 中已有本实验的验收入口和测试文件。
+
+[GUARANTEE]
+
+在 `best_fit_pmm.c` 中实现以下模块内部函数：
+
+```c
+static void best_init(void);
+static void best_init_memmap(struct Page *base, size_t n);
+static struct Page *best_alloc_pages(size_t n);
+static void best_free_pages(struct Page *base, size_t n);
+static size_t best_nr_free_pages(void);
+```
+
+定义 `const struct pmm_manager best_fit_pmm_manager`：
+- `.name` 为 `"best_fit_pmm_manager"`。
+- 管理接口绑定到上述对应函数。
+- `.check` 绑定已有的 `best_fit_check`，不重新编写检查函数。
+
+提供测试所需的 `free_list`、`nr_free` 内部状态，可使用模块内的 `static free_area_t free_area` 及相应宏。
+
+在 `pmm.c` 的 `init_pmm_manager()` 中，将当前分配器切换为 `&best_fit_pmm_manager`。
+
+[SPECIFICATION]
+
+函数：`best_init(void)`
+
+Pre-Condition：
+- 在登记可用物理页之前调用，本分配器尚未管理已交付的空闲块。
+- 不要求空闲链表预先初始化。
+
+Post-Condition：
+- `free_list` 为合法的空双向循环链表，前后指针均指向链表头。
+- `nr_free` 为 0。
+
+函数：`best_init_memmap(struct Page *base, size_t n)`
+
+Pre-Condition：
+- `best_init()` 已完成，当前空闲链表及计数有效。
+- `n > 0`；`base` 指向有效描述符数组中连续 `n` 个描述符，对应已确认可用的连续物理页。
+- 这些页均处于保留状态，不与已登记的空闲区域重叠。
+
+Post-Condition：
+- 交付页的描述符标志、`property` 和引用计数完成初始化，不再处于保留状态。
+- 以 `base` 为该空闲块首页，设置首页标志，`base->property = n`；其余页不标记为块首页。
+- 首页节点加入空闲链表，保持地址递增顺序。
+- `nr_free` 比调用前增加 `n`，已有空闲资源不丢失、不重复登记。
+
+Requirements：
+- `n == 0` 或交付页不处于保留状态时，按现有框架约定断言失败。
+- 不清零物理页内容，不修改交付范围之外的描述符状态；必要的链表连接更新除外。
+
+函数：`best_alloc_pages(size_t n)`
+
+Pre-Condition：
+- 分配器已初始化，`n > 0`。
+- 空闲链表按地址递增排列，各块不重叠，首页标志和块长度有效。
+- `nr_free` 等于全部空闲块的页数之和。
+
+Post-Condition：
+
+Case 1：存在满足申请量的空闲块
+- 在所有 `property >= n` 的块中，选择 `property` 最小的一块；大小相同时选择地址较低的块。
+- 从选中块起始位置分配恰好 `n` 个连续物理页，返回首页的 `Page*`。
+- 已分配区域不再属于空闲链表，原首页的空闲块首页标志被清除。
+- 若原块恰好为 `n` 页，不产生剩余块；否则剩余部分以 `page + n` 为首页，正确设置块长度和首页标志，并登记回空闲链表。
+- `nr_free` 比调用前减少 `n`，其余空闲资源保持有效。
+
+Case 2：无法满足申请
+- `n > nr_free`，或总量足够但不存在至少 `n` 页的连续块时，返回 `NULL`。
+- 不改变空闲链表、计数和页描述符状态。
+
+Case 3：`n == 0`
+- 断言失败，不作为正常分配请求处理。
+
+Requirements：
+- 返回描述符指针，不返回物理地址。
+- 不清零物理页内容，不建立页表映射，不增加引用计数。
+
+函数：`best_free_pages(struct Page *base, size_t n)`
+
+Pre-Condition：
+- 分配器已初始化，空闲链表及计数有效。
+- `n > 0`；`base` 指向有效描述符数组中连续 `n` 页的起始描述符。
+- 调用者保证该区域已分配、可以归还，且不与已有空闲块重叠。
+
+Post-Condition：
+- 归还页的相关标志和引用计数完成初始化，以空闲块形式重新登记。
+- 空闲链表保持地址递增顺序。
+- 与归还区域在物理位置上连续的前后空闲块均完成合并，不跨过占用页合并。
+- 合并后的首页正确记录总页数并设置首页标志，被并入块的多余首页标志和链表节点被移除。
+- `nr_free` 比调用前增加 `n`，合并不重复增加计数。
+
+Requirements：
+- 按现有框架约定，检查 `n > 0`，并逐页断言其不是保留页或已登记的空闲块首页。
+- 上述断言不替代调用者对归还区域合法性的保证。
+- 不清零物理页内容，不修改页表映射。
+
+函数：`best_nr_free_pages(void)`
+
+Pre-Condition：
+- 分配器已初始化，`nr_free` 正确维护。
+
+Post-Condition：
+- 返回当前可分配的空闲物理页总数，不是空闲块数量。
+- 不改变空闲链表、页描述符或计数。
+````
+
+</details>
+
+完整过程记录见 [prompt.md 中成员二第 1 轮](prompt.md#member2-best-fit-round1)。
+
+**（2）实现结果与验证**
+
+将首轮提示词交给 VS Code 中的 Codex 后，完成了 `best_fit_pmm.c` 的分配器实现，并在 `pmm.c` 中切换为 `best_fit_pmm_manager`。原有的 `basic_check()`、`best_fit_check()` 和队友完成的 `page_init()` 保持不变。本次首轮实现通过检查，未进行追加修复。
+
+随后在 WSL 中进行编译和运行验证，结果如下：
+
+| 命令 | 实际结果 |
+|---|---|
+| `make -j2` | 编译、链接并生成内核镜像成功 |
+| `make qemu` | 输出 `memory management: best_fit_pmm_manager`，确认使用 Best-Fit；随后输出 `check_alloc_page() succeeded!`，表明分配器自检完成 |
+| `make grade` | Page Init、Best-Fit 均为 `OK`，总分为 `20/20` |
+| `echo $?` | 紧接评分命令执行，输出 `0`，确认正常退出 |
+
+正常启动与自检、评分结果分别保存在以下两张截图中。评分脚本通过说明当前实现满足其检查条件，不代表已经覆盖所有可能的申请和释放情况。
+
+![Best-Fit 正常启动、内存布局与分配器自检](images/best-fit-boot.png)
+
+![Page Init 与 Best-Fit 评分通过，总分 20/20，退出码为 0](images/best-fit-grade.png)
+
+**（3）Best-Fit 算法的改进空间**
+
+当前实现按照地址顺序维护空闲链表，分配时需要遍历各个空闲块，才能确定满足申请量的最小块，最坏查找复杂度为 O(k)，其中 k 为空闲块数量。可以增加按块大小组织的索引，例如使用按块大小和地址排序的平衡树，加快最小合适块的查找。但在拆分、释放和合并后，需要同步更新索引，会增加管理结构和维护开销。
+
+此外，Best-Fit 只保证本次选择的块最合适，仍可能在拆分后留下较小的碎片，不能保证后续申请中的整体效果最优。可以针对单页等常见申请大小维护专门的空闲块索引，在保持最小适配规则的前提下减少查找开销。
 
 #### 4.2.3 任务三：Buddy System 实现
 
