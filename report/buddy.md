@@ -1,7 +1,8 @@
 # Lab2 Buddy 伙伴分配器：设计与测试说明
 
-负责人：2412737-罗元伟，按已同步的总报告分工及本次用户确认记录。
-本文于 2026-10-21 根据当前 `lab2` 分支实际源码和已归档运行证据补充，说明已有实现，没有修改分配器或重新执行测试。
+负责人：2412737-罗元伟。
+
+Buddy负责连续物理页的分配、拆分与合并，为上层SLUB提供页资源。本文说明当前实现及九组内核自检。
 
 ## 一、模块位置与职责
 
@@ -81,10 +82,9 @@ buddy_ppn = block_ppn XOR (1 << order)
 
 非法参数触发断言不属于上述正常启动九组的通过范围，不将其混同于返回 NULL 的资源不足行为。
 
-## 四、已有验证证据
+## 四、运行结果
 
-[SLUB 阶段归档结果](evidence/slub-tests/results.json) 保留原测试时的源码 SHA-256。本次合并在 Windows 下核对：统一为 LF 后，Buddy、SLUB、测试文件、init.c 与 Makefile 内容和归档一致；pmm.c 则除 `YOUR CODE` 已换成 2412832 的注释外一致。换行和学号注释不改变执行逻辑，但不能将当前原始字节哈希说成全部相同，原测试记录未覆盖重写。
-该镜像的[真实 QEMU 串口日志](evidence/slub-tests/test-qemu.log)包含：
+在GCC 13.2.0、QEMU 4.1.1、128 MiB RAM下，当前源码的Buddy配置完成九组自检，共303次测试区操作、326次结构审计，随后SLUB八组测试也通过，最终恢复至31905个空闲页。
 
 ```text
 BUDDY CHECK ALL PASSED (9 groups, 303 arena operations, 326 structure audits)
@@ -92,12 +92,12 @@ check_alloc_page() succeeded!
 SLUB CHECK ALL PASSED (8 groups, 1831 allocations, 1831 releases, 5502 content audits, 31905 free pages)
 ```
 
-这份结果来自先前实际执行的 GCC 13.2.0、QEMU 4.1.1、128 MiB RAM 测试，本次仅核对并引用，没有重新运行或制造新的结果。
-更早的 Buddy 独立启动结果另见[历史记录](evidence/sync-20261021-buddy/results.json)，其空闲页基线属于当时的内核快照，应与后续 SLUB 镜像区分。
+![Buddy九组内核自检的终端回显](./images/lab2-buddy-terminal.png)
 
-课程评分脚本要求当前选择 Best-Fit，因此默认 Buddy 镜像的 `make grade` 为 10/20（Page Init 通过，Best-Fit 管理器选择不匹配）。这项评分不替代 Buddy 九组自检，也不把 10/20 描述成评分通过。
+[本次源码与配置记录](evidence/final-20261021/results.json)、[原始串口日志](evidence/final-20261021/buddy-qemu.log)和[截图显示命令](evidence/final-20261021/screenshots.json)分别记录验证输入、完整输出与图片来源。更早的[独立启动记录](evidence/sync-20261021-buddy/results.json)对应当时的内核快照。
 
-## 五、文档范围
+课程评分检查当前管理器是否为Best-Fit：Buddy配置为10/20，Best-Fit验收配置为20/20。Buddy的正确性由九组自检检验，评分及对应配置见主报告第5.9节。
 
-本次补齐已有实现的设计、接口、测试覆盖和证据索引，保留了队友同步后的总报告。Buddy 原始实现与测试会话的完整用户提示词尚未在已提交记录中找到，不能根据代码倒写成“实际提示词”；最终运行截图也不以日志冒充。
-这些历史材料仍需由原始会话或实际截图补充。已保存的 SLUB 两份实际提示词见 [prompt.md](prompt.md)，SLUB 的详细设计和测试见 [slub.md](slub.md)、[slub-tests.md](slub-tests.md)。
+## 五、实际提示词与报告入口
+
+[两轮Buddy实际提示词](prompt.md#buddy-prompts)保留实现、测试阶段的原始输入及后续接口讨论。完整实现说明、测试覆盖和本次运行结果整合在[主报告第4.2.3节](report.md#buddy-implementation)。SLUB的设计与测试见[实现记录](slub.md)、[测试记录](slub-tests.md)。

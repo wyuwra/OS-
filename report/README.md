@@ -1,17 +1,16 @@
-# Lab2 Buddy 与 SLUB 文档索引
+# Lab2 实验材料索引
 
-模块负责人：2412737-罗元伟，依据已同步总报告及用户对负责范围的确认。
+主实验报告为 [report.md](report.md)，源码位于仓库根目录 `lab2_new/`。我负责Buddy及SLUB模块，姓名与学号为罗元伟、2412737。
 
 | 材料 | 内容 |
 |---|---|
-| [Buddy 设计与测试说明](buddy.md) | 分阶、区间登记、拆分、伙伴定位与合并、接口约定、九组自检和运行证据 |
-| [SLUB 工作总结](slub-summary.md) | 两层设计、尺寸类别、布局、分配回收和测试方向的简明说明 |
-| [SLUB 实现记录](slub.md) | 第一阶段实现细节、接口、布局、接入和真实验证记录 |
-| [SLUB 内核测试记录](slub-tests.md) | 第二阶段八组测试、失败注入、资源上界、命令及结果 |
-| [实际提示词记录](prompt.md) | SLUB 实现和测试的用户原文、实际迭代及文档同步记录 |
-| [小组实验报告](report.md) | 已同步的全组报告，Buddy 与 SLUB 分别见第 4.2.3、4.3 节 |
+| [主实验报告](report.md) | 初始化、First-Fit、Best-Fit、Buddy、SLUB、MMU调试及完整验证结果 |
+| [提示词记录](prompt.md) | 各模块实际提示词、实现与测试过程；Buddy原文见[此节](prompt.md#buddy-prompts) |
+| [Buddy设计与测试](buddy.md) | 分阶、拆分、伙伴合并、释放约定及九组自检 |
+| [SLUB工作总结](slub-summary.md) | 两层设计、缓存、布局与测试方向 |
+| [SLUB实现记录](slub.md) | 实现阶段的接口、布局和接入记录 |
+| [SLUB测试记录](slub-tests.md) | 八组测试、失败注入及资源上界 |
+| [本次完整验证](evidence/final-20261021/results.json) | 两种配置的构建、启动、评分及源码哈希 |
+| [截图来源](images/image-sources.json) | 模块一、MMU、Buddy、SLUB及评分截图与日志对应关系 |
 
-SLUB 的详细实现与测试文档已在此前提交中上传；本次补充 Buddy 独立说明，并将原本位于仓库外的 SLUB 工作总结整理成正式文档。
-`tmp/`、`class/`、`docs/` 目录本身不纳入 Git 仓库。
-
-当前证据表明 Buddy 九组自检和 SLUB 八组测试通过；默认 Buddy 镜像的课程评分为 10/20，原因是评分脚本的 Best-Fit 选择要求。Buddy 原始完整提示词及最终截图尚需补齐，不据现有日志宣称整组最终报告已经完成。
+Buddy九组自检与SLUB八组测试通过。仓库默认启用Best-Fit，验收配置通过Page Init与Best-Fit检查，得到20/20；Buddy配置的课程评分为10/20。各结果对应的配置与命令见主报告第5.9节。

@@ -1,0 +1,64 @@
+[
+  {
+    "image": "lab2-build-terminal.png",
+    "capture_date": "2026-10-21",
+    "kind": "X11 xterm screenshot displaying actual saved command output",
+    "commands_displayed": [
+      [
+        "cat",
+        "report/evidence/final-20261021/buddy-build.log"
+      ],
+      [
+        "cat",
+        "report/evidence/final-20261021/best-fit-build.log"
+      ]
+    ],
+    "image_sha256": "4eb2ea78e41a55d6c4a02cc448eb9cecfd2d52347a0c70692539f82ca8efd6e8"
+  },
+  {
+    "image": "lab2-buddy-terminal.png",
+    "capture_date": "2026-10-21",
+    "kind": "X11 xterm screenshot displaying actual saved command output",
+    "commands_displayed": [
+      [
+        "sed",
+        "-n",
+        "/^memory management:/,/^SLUB CHECK BEGIN/{ /^SLUB CHECK BEGIN/!p; }",
+        "report/evidence/final-20261021/buddy-qemu.log"
+      ]
+    ],
+    "image_sha256": "753dbe6bd01dee5acf0db6f6fc3e8abf5cfd7a2b16f3e8d103ea4c77269fd2d9"
+  },
+  {
+    "image": "lab2-slub-terminal.png",
+    "capture_date": "2026-10-21",
+    "kind": "X11 xterm screenshot displaying actual saved command output",
+    "commands_displayed": [
+      [
+        "sed",
+        "-n",
+        "/^SLUB CHECK BEGIN/,/^SLUB CHECK ALL PASSED/p",
+        "report/evidence/final-20261021/buddy-qemu.log"
+      ]
+    ],
+    "image_sha256": "87755bd4ce76d781ff8b197900b7e8d5f1f0c418557ae1e8ba7bee0fdc8a93be"
+  },
+  {
+    "image": "lab2-best-fit-grade-terminal.png",
+    "capture_date": "2026-10-21",
+    "kind": "X11 xterm screenshot displaying actual saved command output",
+    "commands_displayed": [
+      [
+        "cat",
+        "report/evidence/final-20261021/best-fit-grade.log"
+      ],
+      [
+        "tail",
+        "-n",
+        "5",
+        "report/evidence/final-20261021/best-fit-qemu.log"
+      ]
+    ],
+    "image_sha256": "9aa15831010d733aba5277c36a89eb9ed0c42b49fc1975dd92c9e963a08b5412"
+  }
+]

@@ -122,7 +122,7 @@ SLUB CHECK ALL PASSED (8 groups, 1831 allocations, 1831 releases, 5502 content a
 完整执行参数、环境及源码 SHA-256 见 [results.json](evidence/slub-tests/results.json)。
 
 本轮完成全部新增测试和当前可用的必要检查，没有未能执行的构建或运行项。
-本轮没有新增终端截图；原实验整组报告中的身份、截图及最终目录整理仍应在最终提交前核对，不据本测试记录宣称整组报告已完成。
+本阶段日志保留原测试快照。当前源码在Buddy和Best-Fit两种配置下的完整验证与终端截图见[主报告第5.9节](report.md#final-verification)。
 既有第一阶段日志保留其原始源码快照含义，不重写旧证据来匹配本轮修改。
 
 ## 实际迭代与收获
