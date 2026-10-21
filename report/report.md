@@ -7,7 +7,6 @@
 | **实验名称** | Lab2：物理内存管理 |
 | **小组成员** | 2412832-王雅枫、2413276-胡楚骅、2412737-罗元伟 |
 | **完成日期** | 2026-10-22 |
-| **本版更新日期** | 2026-10-21 |
 
 ### 小组分工
 
@@ -32,29 +31,13 @@
 
 ## 二、实验环境
 
-### 2.1 运行与验证环境
-
-| 项目 | 实际环境 |
-|---|---|
-| 主机与终端 | Windows，PowerShell；实验构建与调试在 WSL Ubuntu 内执行 |
-| 目标架构 | RISC-V RV64，QEMU `virt` |
-| 交叉编译器 | 模块一及 MMU：SiFive GCC 8.3.0；Buddy/SLUB 本次验证：`riscv64-unknown-elf-gcc` 13.2.0 |
-| 模拟器 | QEMU 4.1.1 |
-| 固件 | QEMU 配套 OpenSBI v0.4，串口报告 SBI 0.1 |
-| 调试器 | GNU gdb-multiarch 15.1 |
-| 物理页大小 | 4096 字节 |
-| 源码目录 | `lab2_new/` |
-| 验证方式 | 在 Linux 临时目录副本中构建与运行，比对原源码哈希，运行日志归档至报告目录 |
-
-模块一的工具版本记录见[自动验证汇总](evidence/module1/results.json)与[GDB 汇总](evidence/module1-gdb/results.json)；Buddy 与 SLUB 两种配置下的构建和运行参数见[验证结果](evidence/final-20261021/results.json)。
-
-### 2.2 AI 工具
-
 | 成员 | AI 编程工具 | 底层模型 | 备注 |
 |------|------------|---------|------|
-| 2412832-王雅枫 | Codex | GPT 6.1 Sol | 模块一实现、测试与 MMU 调试 |
-| 2413276-胡楚骅 | ChatGPT、Codex（VS Code 插件） | GPT 6.1 Sol | First-Fit 分析、Best-Fit 实现与报告整合 |
-| 2412737-罗元伟 | Codex（VS Code 插件）、Claude（VS Code 插件） | GPT 6.1 Sol、Opus 5.5 | Buddy、SLUB 实现与测试 |
+| 2412832-王雅枫 | Codex | GPT 6.1 Sol | |
+| 2413276-胡楚骅 | ChatGPT、Codex（VS Code 插件） | GPT 6.1 Sol | |
+| 2412737-罗元伟 | Codex（VS Code 插件）、Claude（VS Code 插件） | GPT 6.1 Sol、Opus 5.5 | |
+
+---
 
 ## 三、实验整体逻辑分析
 
@@ -66,11 +49,11 @@
 
 ### 3.2 实现步骤
 
-1. **物理内存探测与初始化。** 解析 DTB 获取物理内存范围，计算页描述符数组的存放位置并完成初始化，扣留固件、内核镜像及描述符数组占用的物理页，将剩余的可用物理页交付给分配器管理。
-2. **分析 First-Fit 并实现 Best-Fit。** 阅读默认的 First-Fit 代码，理清空闲块的双向链表组织、拆分与前后合并逻辑；随后在相同的 `pmm_manager` 接口下实现 Best-Fit 算法，对比两种线性链表策略在选块逻辑上的差异。
-3. **实现 Buddy 伙伴分配器并构造完备测试。** 采用按阶（$2^k$ 页）分组的空闲链表组织物理页，利用物理页号异或运算实现快速伙伴定位、逐级拆分与递归合并，并针对未对齐边界、非二次幂请求及碎片的合并恢复编写自检用例。
-4. **基于页分配器实现 SLUB 对象分配器。** 在底层按页分配的接口之上，设计固定尺寸类别（Size Classes）的 slab 缓存与大对象直接分配路径，实现按字节粒度的内核内存申请与释放。
-5. **使用 GDB 调试页表查询与 TLB 机制。** 内核在进入 C 代码前已由 `entry.S` 启用 Sv39 大页映射。通过双 GDB 联调 QEMU 与 ucore，单步跟踪虚拟地址经过软件 TLB 查询、多级页表遍历最终转化为物理地址的全过程。
+1. **物理内存探测与初始化。** 解析 DTB 获取物理内存范围，计算页描述符数组的存放位置并完成初始化，扣留固件、内核镜像及描述符数组占用的物理页，将剩余的可用物理页交付给分配器管理。只有先确定可分配页的范围和初始状态，后续分配器才能安全使用这些资源。
+2. **分析 First-Fit 并实现 Best-Fit。** 阅读默认的 First-Fit 代码，理清空闲块的双向链表组织、拆分与前后合并逻辑；随后在相同的 `pmm_manager` 接口下实现 Best-Fit 算法，对比两种线性链表策略在选块逻辑上的差异。先理解现有分配流程，再修改选块策略，可以集中比较算法差异，保留相同的接口和状态约定。
+3. **实现 Buddy 伙伴分配器并设计自检测试。** 采用按阶（$2^k$ 页）分组的空闲链表组织物理页，利用物理页号异或运算实现快速伙伴定位、逐级拆分与递归合并，并针对未对齐边界、非二次幂请求及碎片的合并恢复编写自检用例。在连续页分配的基础上，进一步理解按阶管理及其拆分、合并规则。
+4. **基于页分配器实现 SLUB 对象分配器。** 在底层按页分配的接口之上，设计固定尺寸类别（Size Classes）的 slab 缓存与大对象直接分配路径，实现按字节粒度的内核内存申请与释放。SLUB 依赖可用的页分配接口，因此在页分配器完成后实现。
+5. **使用 GDB 调试页表查询与 TLB 机制。** 内核在进入 C 代码前已由 `entry.S` 启用 Sv39 大页映射。通过双 GDB 联调 QEMU 与 ucore，单步跟踪虚拟地址经过软件 TLB 查询、多级页表遍历最终转化为物理地址的全过程。该调试可与分配器实现分别开展，用于将分页原理与实际访存过程对应起来。
 
 ## 四、实验内容与实现
 
@@ -160,7 +143,7 @@ free_count       = (managed_end - free_begin) / P
 [PROMPT]
 任务：完成 Lab2 模块一 static void page_init(void)，为后续分配算法建立可靠基础。
 功能目标：依据 DTB 计算可管理 RAM，安置并初始化 Page 数组，登记完整空闲页。
-修改范围：kern/mm/pmm.c；辅助验证工具放 tools，报告与证据放 lab2/report。
+修改范围：kern/mm/pmm.c；辅助验证工具放 tools，报告与证据放仓库根目录 report。
 操作要求：先核对地址转换与分配器接口；显式处理边界；保留官方测试与代码标记。
 验收方式：正常 RAM、不同容量、非页对齐、容量不足和溢出检查；GDB 核对交付前后状态。
 
@@ -179,7 +162,7 @@ Pre-Condition：上述启动、DTB、分配器前置条件成立。
 Post-Condition：offset、npage、pages 正确，全部描述符先保留，仅开放完整空闲页。
 Case 1：有效且足够的 RAM，按框架上限和页边界初始化并打印布局。
 Case 2：无效 DTB、溢出、容量不足或没有完整空闲页，明确 panic，禁止错误交付。
-Requirements：不覆盖已用页，验证前后核对源文件哈希；未知学号保留占位。
+Requirements：不覆盖已用页，验证前后核对源文件哈希；保留 lab2 function1 标记，将 YOUR CODE 替换为负责人学号 2412832。
 ```
 
 #### 4.1.6 实现与测试迭代过程
@@ -227,7 +210,7 @@ Requirements：不覆盖已用页，验证前后核对源文件哈希；未知�
 
 **补充讨论：能否通过 `satp` 页表或直接读写内存来探测容量？**
 - **不能通过 `satp` 或页表反推。** 页表仅定义虚拟地址到物理地址的映射关系与访问权限，并不代表目标物理地址上真的插有内存条。例如本实验 `entry.S` 使用一个根页表大页项直接映射了 $1\text{ GiB}$ 地址空间，但默认物理内存只有 $128\text{ MiB}$。
-- **不能在未知地址空间中盲目使用读写试探（Memory Probing）。** 对未知的物理地址执行写操作，极易误触外设的 MMIO 寄存器导致硬件状态错乱，或者覆盖正在运行的固件与内核数据，也可能触发总线访问异常（Load/Store Access Fault）或遇到地址回绕（Address Aliasing）。因此，操作系统必须依赖固件传递的内存映射表，而不能靠暴力试写来探测可用内存。
+- **不能在未知地址空间中盲目使用读写试探（Memory Probing）。** 对未知的物理地址执行写操作，极易误触外设的 MMIO 寄存器导致硬件状态错乱，或者覆盖正在运行的固件与内核数据，也可能触发总线访问异常（Load/Store Access Fault）或遇到地址回绕（Address Aliasing）。因此，应优先采用固件、引导程序或明确的板级配置提供的内存信息，读写探测仅适用于范围和恢复机制明确的平台。
 
 ### 4.2 功能模块二：物理内存分配
 
@@ -260,7 +243,7 @@ First-Fit 分配器首先在 `default_init()` 中初始化空闲块双向循环�
 First-Fit 每次从低地址开始寻找第一个满足要求的空闲块，实现简单，且倾向于将高地址的大块内存保留下来。但缺点在于低地址区域容易被反复切割，留下许多难以被后续请求利用的外部小碎片；同时每次分配都从头扫描这些小碎片，拉低了查找效率。
 
 针对这些问题，可以从两个方向改进：
-- **调整选块策略：** 例如改用 Best-Fit 选择最接近申请大小的块以大块保留，或采用 Next-Fit 从上一次分配结束的位置继续扫描以分散碎片并减少头部遍历次数。
+- **调整选块策略：** 可考虑 Worst-Fit，优先从最大空闲块分配，使剩余块继续容纳不同大小的请求；但它也可能拆散大块，影响后续大请求。Next-Fit 则从上次查找位置继续扫描，减少重复遍历，实际效果取决于申请序列。
 - **优化数据结构：** 引入按块大小分桶的多条空闲链表（Segregated Free Lists）或平衡二叉树，避免在单条线性链表上进行 $O(k)$ 复杂度的顺序查找，更彻底的做法则是采用按二次幂分阶管理的 Buddy System。
 
 #### 4.2.2 任务二：Best-Fit 实现
@@ -269,7 +252,7 @@ First-Fit 每次从低地址开始寻找第一个满足要求的空闲块，实�
 
 **（1）算法设计与提示词编写**
 
-Best-Fit 与 First-Fit 共享相同的双向链表组织和释放合并逻辑，核心区别在于 `best_alloc_pages(n)` 的选块过程：First-Fit 遇到第一个满足 `property >= n` 的块即停止查找，而 Best-Fit 需要遍历链表，在所有满足 `property >= n` 的候选块中挑出 `property` 最小的一块（定义局部变量 `min_size = nr_free + 1` 辅助更新最优块指针）。由于空闲链表按地址递增排列，严格使用 `< min_size` 判断即可天然保证在块大小相同时优先选中低地址块；此外，若遍历途中遇到 `property == n` 的精确匹配块，可直接跳出循环完成分配。
+Best-Fit 与 First-Fit 共享相同的双向链表组织和释放合并逻辑，核心区别在于 `best_alloc_pages(n)` 的选块过程：First-Fit 遇到第一个满足 `property >= n` 的块即停止查找，而 Best-Fit 需要遍历链表，在所有满足 `property >= n` 的候选块中挑出 `property` 最小的一块，用 `page` 保存当前最优候选。由于空闲链表按地址递增排列，仅在新块的 `property` 小于当前候选块的 `property` 时更新指针即可天然保证在块大小相同时优先选中低地址块；此外，若遍历途中遇到 `property == n` 的精确匹配块，可直接跳出循环完成分配。
 
 在编写提示词时，采用了 `[PROMPT]`、`[RELY]`、`[GUARANTEE]` 和 `[SPECIFICATION]` 的四段式结构：明确限定只修改 `best_fit_pmm.c` 的待填区域和 `pmm.c` 的管理器绑定，严禁改动原有的 `basic_check()`、`best_fit_check()` 及队友编写的 `page_init()`；在规格部分详细给出了最小适配选块规则、拆分后原链表位置的保持、释放时的前后合并条件以及分配失败时的状态不变性。
 
@@ -459,26 +442,13 @@ Post-Condition：
 
 **（2）实现结果与验证**
 
-通过 VS Code 中的 Codex 插件一次生成了 `best_fit_pmm.c` 的全部接口实现，并在 `pmm.c` 中切换为 `best_fit_pmm_manager`，首轮代码即通过全部断言检查。在 WSL 环境中执行的编译与测试结果如下：
-
-| 命令 | 实际结果 |
-|---|---|
-| `make -j2` | 正常编译链接并生成内核镜像 |
-| `make qemu` | 串口打印 `memory management: best_fit_pmm_manager` 及 `check_alloc_page() succeeded!`，确认 Best-Fit 自检通过 |
-| `make grade` | Page Init 与 Best-Fit 两项均显示 `OK`，得分 `20/20` |
-| `echo $?` | 输出 `0`，评分脚本正常退出 |
-
-运行输出与评分结果截图如下：
-
-![Best-Fit 正常启动、内存布局与分配器自检](images/best-fit-boot.png)
-
-![Page Init 与 Best-Fit 评分通过，总分 20/20，退出码为 0](images/best-fit-grade.png)
+通过 VS Code 中的 Codex 插件首轮完成 `best_fit_pmm.c` 的接口实现，并在 `pmm.c` 中切换为 `best_fit_pmm_manager`，通过原有自检，未追加修复。编译、运行与评分结果见[第 5.2 节](#best-fit-validation)。
 
 **（3）Best-Fit 算法的优缺点与改进空间**
 
 Best-Fit 每次挑选最接近请求大小的空闲块，避免了轻易拆散大块连续内存。但它在未遇到精确匹配块时必须扫描整条空闲链表，时间复杂度为 $O(k)$（$k$ 为空闲块数量）；而且由于每次都挑最接近的块切割，剩余部分往往是非常零碎的微小块（如 1 页），长期运行后链表中容易堆积大量难以利用的微小外部碎片。
 
-若要优化查找开销，可以使用以`(property, address)`为键值的红黑树或跳表替代单向顺序扫描，将查找复杂度降至 $O(\log k)$；或者针对单页、双页等高频请求单独设立快速缓存链表（类似伙伴系统或分级空闲链表），减少遍历整条链表的次数。
+若要优化查找开销，可以使用以 `(property, address)` 为键值的红黑树或跳表替代线性扫描：红黑树查找的最坏复杂度为 $O(\log k)$，跳表查找的期望复杂度为 $O(\log k)$。也可以按块大小分桶，为单页、双页等高频请求建立快速索引，但仍需选择最小合适块，拆分、释放和合并时也要同步维护索引。
 
 <a id="buddy-implementation"></a>
 
@@ -499,7 +469,7 @@ Best-Fit 每次挑选最接近请求大小的空闲块，避免了轻易拆散�
 | `buddy_alloc_pages(n)` | 将申请页数向上取整到 $2^k$，查找最小可用阶并逐级拆分，记录分配元数据 |
 | `buddy_free_pages(base, n)` | 校验分配记录，归还整个 $2^k$ 页块并递归向上合并空闲伙伴 |
 | `buddy_nr_free_pages()` | 返回当前实际未分配的空闲物理页总数 |
-| `buddy_check()` | 在受控隔离区域内执行九组完备性自检，结束后恢复真实分配器状态 |
+| `buddy_check()` | 在受控隔离区域内执行九组自检，结束后恢复真实分配器状态 |
 
 阶数为 $k$ 的块包含 $2^k$ 个连续物理页。对于空闲块的首页，置上 `PG_property` 标志，用 `property` 字段记录阶数 $k$，并通过 `page_link` 挂入第 $k$ 阶空闲链表；对于已分配块的首页，利用 `flags` 的 bit 2 标记已分配状态，在 `flags` 高位记录原始请求页数 $n$，`property` 仍保存实际分配阶数 $k$。块内其余非首页的 `flags` 和 `property` 均保持为零。
 
@@ -829,8 +799,6 @@ BUDDY CHECK ALL PASSED (9 groups, 303 arena operations, 326 structure audits)
 check_alloc_page() succeeded!
 ```
 
-![Buddy 九组自检的 QEMU 串口日志终端回显](./images/lab2-buddy-terminal.png)
-
 完整运行输出见 [Buddy 串口日志](evidence/final-20261021/buddy-qemu.log)，详细设计文档见 [Buddy 模块文档](buddy.md)。
 
 ### 4.3 模块二 Challenge：SLUB（选做）
@@ -862,7 +830,7 @@ void slub_free(void *ptr);
 大对象块：[首页头部，64字节][至少 size 字节用户区间][余量]
 ```
 
-因此单页实际对象容量为 $(4096 - 64) / \text{object\_size}$。空闲槽位利用自身前 8 字节存放单向链表 `next` 指针；槽位分配给调用者后，分配器不再读取其内部数据，调用者可以安全覆写整个请求区间。
+因此单页实际对象容量为 $\left\lfloor (4096 - 64) / \text{object\_size} \right\rfloor$，即向下取整后的槽位数。空闲槽位利用自身前 8 字节存放单向链表 `next` 指针；槽位分配给调用者后，分配器不再读取其内部数据，调用者可以安全覆写整个请求区间。
 
 **（2）缓存状态流转与大对象处理**
 
@@ -1057,8 +1025,6 @@ void slub_free(void *ptr);
 
 无论底层搭配 Buddy 还是 Best-Fit 页分配器，SLUB 测试均顺利完成 **8 组用例、1831 次分配、1831 次释放和 5502 轮存活数据校验**，测试结束后系统空闲页数精确恢复至初始基线 **31905 页**。
 
-![SLUB 八组测试、失败恢复和完整回收的终端回显](./images/lab2-slub-terminal.png)
-
 源码接入位置见 [`init.c`](../lab2_new/kern/init/init.c)，测试细节见 [SLUB 测试文档](slub-tests.md)，完整串口输出见 [Buddy 配置日志](evidence/final-20261021/buddy-qemu.log)和 [Best-Fit 配置日志](evidence/final-20261021/best-fit-qemu.log)。
 
 ### 4.4 分支任务：GDB 调试页表查询过程
@@ -1096,15 +1062,13 @@ make debug
 break riscv_cpu_tlb_fill if address == 0xffffffffc0200404
 ```
 
-断点命中时，`access_type` 为 `MMU_INST_FETCH`（指令取指）。执行 `bt 6` 查看 QEMU 内部调用栈，可以清晰看到指令取指在软件 TLB 未命中时的慢路径（Slow Path）调用链：
+断点命中时，`access_type` 为 `MMU_INST_FETCH`（指令取指）。`bt 6` 用于确认取指入口的调用栈，再通过单步执行观察地址翻译和 TLB 填充：
 
 ```text
-get_page_addr_code
-  → tlb_fill
-  → riscv_cpu_tlb_fill
-  → get_physical_address
-  → tlb_set_page
-  → tlb_set_page_with_attrs
+get_page_addr_code → tlb_fill → riscv_cpu_tlb_fill
+                                 ├─ get_physical_address：地址翻译与权限计算
+                                 └─ 返回成功后调用 tlb_set_page
+                                      → tlb_set_page_with_attrs
 ```
 
 注：`get_page_addr_code` 是取指路径的入口；普通数据读写（Load/Store）未命中时则从各自的数据访存辅助函数进入 `tlb_fill`（见 4.4.6 节）。
@@ -1186,163 +1150,137 @@ break cpu_helper.c:197 if mmu_idx == 1 && (env->satp >> 60) == 0
 
 ![全新启动后的 S 模式 Bare 直接映射与调用栈](images/mmu-09-bare-mode.png)
 
-值得注意的是，观察上图的调用栈可以发现，即便在 Bare 模式下，QEMU 依然经历了 `get_page_addr_code → tlb_fill → riscv_cpu_tlb_fill → get_physical_address` 这条软件 TLB 填充链路。这是因为真实硬件 CPU 的 TLB 只负责缓存虚拟页号到物理页号的页表翻译结果；而 QEMU 作为跨架构全系统模拟器，其内部的“软件 TLB”不仅缓存客体虚拟地址到客体物理地址的转换，更核心的作用是缓存**客体虚拟地址到宿主机进程虚拟地址的偏移量（`addend`）**以及该页属于普通 RAM 还是外设 MMIO 的访问权限分类。因此，哪怕客体处于不开启分页的 Bare 模式，首次访问某个 $4\text{ KiB}$ 页面时依然会触发 QEMU 的软件 `tlb_fill` 慢路径来建立宿主内存映射缓存。
+值得注意的是，观察上图的调用栈可以发现，即便在 Bare 模式下，QEMU 依然经历了 `get_page_addr_code → tlb_fill → riscv_cpu_tlb_fill → get_physical_address` 这条软件 TLB 填充链路。真实硬件 CPU 的 TLB 缓存虚拟页到物理页的映射及访问权限等信息。QEMU 的软件 TLB 还需支持客体访存到宿主内存的转换，因此会缓存**客体虚拟地址到宿主机进程虚拟地址的偏移量（`addend`）**，并区分普通 RAM 与 MMIO 等访问路径。因此，哪怕客体处于不开启分页的 Bare 模式，首次访问某个 $4\text{ KiB}$ 页面时依然会触发 QEMU 的软件 `tlb_fill` 慢路径来建立宿主内存映射缓存。
 
 ## 五、测试与验证
 
-### 5.1 模块一的独立验证方案说明
+物理内存初始化与各分配器分别验证，最终源码默认选择 Best-Fit。Buddy 在独立配置下运行自检，SLUB 通过统一页接口兼容两种底层分配器。MMU 调试过程及九张截图见第 4.4 节。
 
-在模块一开发阶段，模块二的分配器尚未全部完成。为验证 `page_init()` 自身的正确性，测试脚本在 Linux 本地临时目录中创建工程副本，保留默认的 `default_pmm_manager`（First-Fit），并在副本中注入了交付前后的逐页状态审计代码（`check_page_init.c`）以及多种异常 DTB 参数。原工作区的所有源码文件在验证前后均通过 SHA-256 校验确认未被改动。
+### 5.1 物理内存初始化测试
 
-### 5.2 模块一验证脚本与命令
-
-模块一的自动化验证与 GDB 批处理检查命令如下：
-
-```bash
-cd /mnt/c/Users/ASUS/Desktop/操作系统/实验
-
-# 执行九组 QEMU 边界与异常注入测试，日志输出至 report/evidence/module1
-python3 lab2_new/tools/verify_page_init.py \
-  --log-dir report/evidence/module1
-
-# 执行 GDB 断点状态核验，日志输出至 report/evidence/module1-gdb
-python3 lab2_new/tools/debug_page_init.py \
-  --log-dir report/evidence/module1-gdb
-```
-
-相关验证脚本位于：[自动验证入口](../lab2_new/tools/verify_page_init.py)、[交付与逐页检查](../lab2_new/tools/check_page_init.c)、[GDB 验证入口](../lab2_new/tools/debug_page_init.py)。
-
-### 5.3 模块一九组测试结果
-
-九组测试（含 4 组正常与边界容量配置、5 组非法与容量不足的负向测试）全部通过（**PASS**）：
+模块一验证时，Best-Fit 尚未完成，因此使用临时副本排除未完成的 Best-Fit 文件，选择 First-Fit 验证 `page_init()`。通过不同 RAM 容量、页对齐和异常输入检查初始化结果，九组检查均通过：
 
 | 案例 | 输入/变化 | 判定结果 |
 |---|---|---|
-| `ram128` | 标准 $128\text{ MiB}$ RAM | First-Fit 自检、官方模块一测试、交付前与逐页状态审计全部通过 |
-| `ram64` | $64\text{ MiB}$ RAM | 页描述符数量与空闲页数随容量折半，全部检查通过 |
-| `ram64-unaligned` | DTB 报告的 $64\text{ MiB}$ 大小减去 1 字节 | RAM 末尾向下对齐舍弃残页，元数据尾页继续保留，全部检查通过 |
-| `ram256-capped` | $256\text{ MiB}$ RAM | 管理上界正确截断至 `0x88000000`，逐页布局检查与分配器自检通过 |
-| `invalid-zero` | DTB 报告内存大小为 0 | 触发 `panic` 拒绝启动，未进入 `init_memmap` |
-| `invalid-overflow` | 起始地址加大小发生 64 位无符号溢出 | 触发 `panic` 拒绝启动，未进入 `init_memmap` |
-| `insufficient-ram` | 报告的 RAM 范围不足以容纳内核镜像 | 触发 `panic` 拒绝启动，未进入 `init_memmap` |
-| `insufficient-metadata` | 能放下内核镜像，但放不下 `pages` 描述符数组 | 触发 `panic` 拒绝启动，未进入 `init_memmap` |
-| `no-free-pages` | 刚好放下描述符数组，扣除后剩余 0 个完整空闲页 | 触发 `panic` 拒绝启动，未进入 `init_memmap` |
+| `ram128` | 128 MiB | 原 First-Fit 自检、官方模块一测试、交付前与逐页检查通过 |
+| `ram64` | 64 MiB | 随容量调整，以上检查通过 |
+| `ram64-unaligned` | 64 MiB 的 DTB 报告大小减 1 字节 | RAM 末尾向下对齐，元数据尾页继续保留；以上检查通过 |
+| `ram256-capped` | 256 MiB | 管理范围限制到 `0x88000000`；交付、逐页和 First-Fit 自检通过 |
+| `invalid-zero` | DTB 报告大小为零 | 明确拒绝，未进入 `init_memmap` |
+| `invalid-overflow` | 起点与大小相加溢出 | 明确拒绝，未进入 `init_memmap` |
+| `insufficient-ram` | 报告范围无法容纳内核 | 明确拒绝，未进入 `init_memmap` |
+| `insufficient-metadata` | 内核可放下，描述符数组放不下 | 明确拒绝，未进入 `init_memmap` |
+| `no-free-pages` | 能容纳元数据，但无完整空闲页 | 明确拒绝，未进入 `init_memmap` |
 
-注：在 `ram256-capped` 案例中，官方提供的测试函数内部直接用未截断的 DTB 大小计算预期 `npage`，与框架宏 `PHYSICAL_MEMORY_END`（$128\text{ MiB}$ 上界）冲突，因此测试脚本在该案例下跳过官方函数，改用我们编写的逐页检查验证截断后的内存布局。
+负向案例通过表示内核正确拒绝错误输入。256 MiB 场景中，官方模块一检查假设 `npage` 等于未经截断的 DTB 结束页号，与框架固定上界不一致，因此跳过该项官方检查，改用逐页检查验证截断布局；其余三个正常容量案例执行官方检查。
 
-![模块一九组检查全部通过的实际终端截图](images/module1-terminal-tests.png)
+![模块一九组检查全部通过](images/module1-terminal-tests.png)
 
-详细验证数据见[完整结果与源码哈希](evidence/module1/results.json)及[元数据不足时的 panic 日志](evidence/module1/insufficient-metadata-qemu.log)。
+图为验证脚本的直接输出。完整结果见[验证汇总](evidence/module1/results.json)，异常处理示例见[元数据空间不足日志](evidence/module1/insufficient-metadata-qemu.log)。
 
-### 5.4 串口输出与内存布局数值核对
+![128 MiB 下的内存布局与初始化检查](images/module1-terminal-boot.png)
 
-![默认 128 MiB 检查内核串口日志的实际终端截图](images/module1-terminal-boot.png)
+图为串口日志的终端回显，对应[运行日志](evidence/module1/ram128-qemu.log)和[编译日志](evidence/module1/ram128-build.log)。关键布局数值如下：
 
-对比注入了额外检查代码的构建与纯净 GDB 构建，两者的内存布局数值如下（见[原始 QEMU 日志](evidence/module1/ram128-qemu.log)、[原始编译日志](evidence/module1/ram128-build.log)）：
-
-| 数值 | 含额外检查代码的九组验证构建 | 不含额外检查代码的纯净 GDB 构建 |
+| 数值 | 含额外检查的九组验证构建 | 不注入 C 检查的 GDB 构建 |
 |---|---|---|
-| `nbase` / `npage` | `0x80000` / `0x88000` | `0x80000` / `0x88000` |
-| 描述符数量 / 字节数 | $32768$ / $1310720$ | $32768$ / $1310720$ |
-| 描述符数组起始 PA | `0x80208000` | `0x80207000` |
-| 首个空闲页起始 PA | `0x80348000` | `0x80347000` |
-| 交付的空闲页总数 | $31928$ | $31929$ |
+| `nbase` / `npage` | `0x80000` / `0x88000` | 相同 |
+| 描述符数量 / 字节数 | 32768 / 1310720 | 相同 |
+| 描述符数组 PA | `0x80208000` | `0x80207000` |
+| 首个空闲页 PA | `0x80348000` | `0x80347000` |
+| 空闲页数 | 31928 | 31929 |
 
-由于注入检查代码使内核镜像的链接结束符号 `end` 向后移动了约一页，描述符数组起点和首个空闲页起点相应后移一页，可用空闲页数少一页，完全符合布局计算公式。在 `ram64-unaligned`（$64\text{ MiB} - 1\text{ B}$）案例中，管理上界向下对齐至 `0x83fff000`，描述符占用 $655320$ 字节，空闲区起点为 `0x802a8000`，初始空闲页数为 $15703$ 页（见[实际日志](evidence/module1/ram64-unaligned-qemu.log)）。
+两份构建包含的检查代码不同，内核末尾 `end` 随之变化，描述符位置和空闲页数相差一页。非页对齐案例的管理末尾为 `0x83fff000`，描述符占 655320 字节，空闲起点为 `0x802a8000`，初始空闲页数为 15703，见[对应日志](evidence/module1/ram64-unaligned-qemu.log)。
 
-### 5.5 模块一 GDB 交付状态核验
+使用 GDB 检查空闲页交付前后的状态：
 
-为直接观察 `page_init()` 将物理页移交给分配器前后的状态变化，我们使用 GDB 脚本（[commands.gdb](evidence/module1-gdb/commands.gdb)）在关键函数入口设置断点并打印内存结构：
+1. 在 `page_init()` 入口确认调用来自 `pmm_init()` 和 `kern_init()`。
+2. 在 `default_init_memmap()` 首条指令处读取 `a0`、`a1`，确认交付的描述符起点和页数。抽查页均为 `flags=1`、`ref=0`、`property=0`，链表节点自链接。
+3. 在 `default_check()` 入口确认空闲区已登记，`nr_free=31929`，空闲块首页为 `flags=2`、`property=31929`，保留前缀仍为 `flags=1`。
+4. 自检结束后，空闲页数恢复为 31929，串口输出 `check_alloc_page() succeeded!`。
 
-```gdb
-set pagination off
-set architecture riscv:rv64
-file bin/kernel
-target remote 127.0.0.1:<本次端口>
-break page_init
-continue
-bt 3
-break *default_init_memmap
-continue
-set $base = (struct Page *)$a0
-set $count = (unsigned long)$a1
-p/x nbase
-p/x npage
-p/x pages
-p *$base
-delete breakpoints
-tbreak *default_check
-continue
-p free_area.nr_free
-p *$base
-finish
-p free_area.nr_free
-detach
-quit
-```
+![GDB 观察空闲页交付前后与自检结果](images/module1-terminal-gdb.png)
 
-1. **在 `page_init` 入口：** 打印调用栈确认为 `kern_init → pmm_init → page_init`。
-2. **在 `default_init_memmap` 首条指令处（交付前瞬间）：** 通过寄存器 `$a0` 和 `$a1` 获取即将交付的起始描述符 `$base` 与页数 `$count`（$31929$）。抽查 DRAM 起始页、元数据末尾页、首个待交付空闲页 `$base` 以及管理末页，确认其 `flags` 均为 `1`（`PG_reserved`），`ref = 0`、`property = 0`，链表指针自环。
-3. **在 `default_check` 入口处（登记完成后）：** 观察到 `free_area.nr_free` 已变为 $31929$；`$base` 的 `flags` 变为 `2`（保留位已清除，`PG_property` 置位），`property = 31929`；而 `$base` 前一页（元数据尾页）依然保持 `flags = 1` 的保留状态。
-4. **执行 `finish` 跑完 `default_check`：** 确认自检结束后 `nr_free` 恢复为 $31929$，断开 GDB 后串口打印 `check_alloc_page() succeeded!`。
+图为 GDB 批处理日志的终端回显。详细过程见[GDB 命令](evidence/module1-gdb/commands.gdb)、[GDB 日志](evidence/module1-gdb/gdb.log)和[结果记录](evidence/module1-gdb/results.json)。三张模块一截图的来源见[图片清单](images/image-sources.json)。
 
-![GDB 交付前、登记后与原自检返回日志的实际终端截图](images/module1-terminal-gdb.png)
+<a id="best-fit-validation"></a>
 
-详细调试输出见[原始 GDB 日志](evidence/module1-gdb/gdb.log)与[GDB 结果汇总](evidence/module1-gdb/results.json)。
+### 5.2 Best-Fit 测试与验证
 
-### 5.6 Buddy、SLUB 与课程评分的完整集成验证
+Best-Fit 任务完成后，在 WSL 中执行编译、启动与评分，结果如下：
 
-在三个模块全部合并、学号标记填写完毕后，我们基于最终版 `lab2_new/` 源码（使用 `riscv64-unknown-elf-gcc` 13.2.0 与 QEMU 4.1.1，开启 `SLUB_TEST=1`）对 **Buddy 默认配置**和 **Best-Fit 评分配置**进行了完整构建与验收测试：
+| 命令 | 实际结果 |
+|---|---|
+| `make -j2` | 正常编译链接并生成内核镜像 |
+| `make qemu` | 打印 `memory management: best_fit_pmm_manager` 及 `check_alloc_page() succeeded!` |
+| `make grade` | Page Init 与 Best-Fit 均为 `OK`，得分 20/20 |
+| `echo $?` | 输出 0，评分正常退出 |
 
-| 运行配置 | 编译及内核自检结果 | `make grade` 评分结果 |
+![Best-Fit 任务完成时的正常启动与分配器自检](images/best-fit-boot.png)
+
+接入 Buddy 与 SLUB 后，分别构建两种管理器配置。Best-Fit 配置开启 `SLUB_TEST=1`，课程评分仍为 20/20，同时通过 SLUB 八组测试。2026-10-21 胡楚骅本机以 GCC 15.1.0、QEMU 4.1.1 对正式切换为 Best-Fit 的代码重新编译、启动并执行 `make grade`，得到相同评分结果，独立 SLUB 测试也通过。
+
+![集成阶段 Best-Fit 评分20/20及SLUB测试汇总的日志回显](images/lab2-best-fit-grade-terminal.png)
+
+图为已保存评分与运行日志在终端中的回显。对应[Best-Fit 评分日志](evidence/final-20261021/best-fit-grade.log)、[运行日志](evidence/final-20261021/best-fit-qemu.log)和[验证汇总](evidence/final-20261021/results.json)。Best-Fit 评分项检查当前管理器指针；算法行为由内置自检验证。
+
+<a id="buddy-slub-validation"></a>
+
+### 5.3 Buddy 与 SLUB 测试
+
+**Buddy 测试。** 选择 `buddy_pmm_manager`，执行九组自检，覆盖初始化与区间边界、非二次幂请求、多级拆分、伙伴合并、相邻非伙伴块、空洞与占用屏障、失败后的状态保持、混合分配释放以及真实分配器恢复。测试完成 303 次测试区操作与 326 次结构审计，输出 `BUDDY CHECK ALL PASSED`。
+
+![Buddy九组自检通过的日志回显](images/lab2-buddy-terminal.png)
+
+**SLUB 测试。** 在两种底层页分配器配置下，SLUB 均完整执行八组测试，完成 1831 次对象分配、1831 次释放以及 5502 次存活对象内容核验，结束时空闲页数恢复至测试镜像的基线 31905 页。覆盖尺寸类别边界、跨页申请、对象隔离、slab 扩展与状态变化、不同释放顺序、随机序列、大对象页数取整，以及溢出和取页失败后的恢复。
+
+![SLUB八组测试与完整回收的日志回显](images/lab2-slub-terminal.png)
+
+集成验证使用 GCC 13.2.0、QEMU 4.1.1，在独立临时副本中构建，结果如下：
+
+| 运行配置 | 编译及内核自检结果 | 课程评分 |
 |---|---|---|
-| **Buddy + SLUB**（仓库默认配置） | 编译通过；Buddy 9 组自检（303 次操作、326 次结构审计）全部通过；SLUB 8 组测试全部通过 | `10/20`（Page Init 通过；因官方评分脚本固定检查 Best-Fit 管理器名称，第二项不匹配） |
-| **Best-Fit + SLUB**（仅在 `pmm.c` 切换管理器指针） | 编译通过；Best-Fit 自检通过；SLUB 8 组测试全部通过 | **`20/20`**（Page Init 与 Best-Fit 均显示 `OK`，退出码为 0） |
+| Buddy + SLUB | Buddy九组自检、SLUB八组测试通过 | 10/20，Page Init通过，Best-Fit管理器选择不匹配 |
+| Best-Fit + SLUB | Best-Fit自检、SLUB八组测试通过 | 20/20，退出码0 |
 
-在两种底层页分配器配置下，上层的 SLUB 分配器均完整执行了 **8 组测试、1831 次对象分配、1831 次释放以及 5502 轮存活对象数据核验**，并在测试结束时将系统空闲页数精确恢复至初始基线 **31905 页**（相较于仅含 First-Fit 的早期版本，新增的 Buddy 与 SLUB 静态测试数据结构使内核镜像大了约 24 页，故初始空闲页数由 31929 页变为 31905 页）。
+两种配置都通过 SLUB 测试。Buddy 配置的10分差异来自课程评分对 Best-Fit 管理器选择的要求，最终源码保持 Best-Fit。随后胡楚骅本机以 GCC 15.1.0、QEMU 4.1.1 在临时副本中单独选择 Buddy，也通过 Buddy 九组及 SLUB 八组测试。
 
-复现构建与运行命令如下：
+![两种配置编译结果的日志回显](images/lab2-build-terminal.png)
 
-```sh
-make -j2 SLUB_TEST=1
-make qemu SLUB_TEST=1 QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1
-```
-
-评分验证命令如下：
-
-```sh
-make grade SLUB_TEST=1 GRADE_TMP=/mnt/d/wsl-share/OS/tmp/report-completion/runs/buddy-grade QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1
-make grade SLUB_TEST=1 GRADE_TMP=/mnt/d/wsl-share/OS/tmp/report-completion/runs/best-fit-grade QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1
-```
-
-![Buddy与Best-Fit两种配置的实际编译输出](./images/lab2-build-terminal.png)
-
-![Best-Fit课程评分20/20及该配置下SLUB完整测试结果](./images/lab2-best-fit-grade-terminal.png)
-
-相关构建与运行日志归档如下（所有图片与日志的 SHA-256 对应关系见 [image-sources.json](images/image-sources.json)）：
-- 最终验证汇总：[验证参数与源码哈希](evidence/final-20261021/results.json)、[截图生成记录](evidence/final-20261021/screenshots.json)。
-- Buddy 配置日志：[Buddy 构建](evidence/final-20261021/buddy-build.log)、[Buddy 运行](evidence/final-20261021/buddy-qemu.log)、[Buddy 评分](evidence/final-20261021/buddy-grade.log)。
-- Best-Fit 配置日志：[Best-Fit 构建](evidence/final-20261021/best-fit-build.log)、[Best-Fit 运行](evidence/final-20261021/best-fit-qemu.log)、[Best-Fit 评分](evidence/final-20261021/best-fit-grade.log)。
-- 历史集成与标记核对记录：[1e9c4da 版本 Buddy 启动记录](evidence/sync-20261021-buddy/results.json)、[目录整理复核记录](evidence/current-review-20261021/results.json)、[学号注释标记核对](evidence/comment-marker-check-20261021/results.json)。
+详细覆盖见[Buddy设计与测试说明](buddy.md)和[SLUB测试记录](slub-tests.md)；原始结果见[集成验证汇总](evidence/final-20261021/results.json)、[Buddy运行日志](evidence/final-20261021/buddy-qemu.log)、[Buddy评分日志](evidence/final-20261021/buddy-grade.log)。四张新增图片通过终端回显保存的日志后截图，来源见[截图记录](evidence/final-20261021/screenshots.json)。
 
 ## 六、实验总结与收获
 
-### 6.1 对操作系统物理内存管理的理解
+### 6.1 对操作系统的理解
 
-| 核心概念 | 本实验中的具体体现 | 关键认识与易错点 |
-|---|---|---|
-| 物理页帧与描述符 | 以 $4\text{ KiB}$ 为粒度建立 `struct Page` 数组 | `Page *` 是管理元数据的虚拟地址而非物理页本身；`npage` 是绝对页号上界，描述符总数为 `npage - nbase` |
-| 元数据空间扣除与对齐 | `pages` 数组置于内核 `end` 之后，SLUB 页头置于页首前 64 字节 | 物理内存末尾需向下页对齐以丢弃残页，元数据末尾需向上页对齐以保护管理结构不被当作空闲页分配 |
-| 安全的初始化顺序 | 先校验范围与溢出，再将全部描述符置为 `PG_reserved`，最后开放空闲区 | 防止在未确认内存边界安全前覆写内核，也防止未交付的空洞或内核占用页参入伙伴合并 |
-| 外部碎片与内部碎片 | First-Fit/Best-Fit 精确按页切割；Buddy 按 $2^k$ 页取整，SLUB 按尺寸类别取整 | 线性链表精确切割容易产生外部碎片且查找慢；按二次幂或固定类别取整用可控的内部碎片换取了快速查找与高效合并 |
-| 伙伴定位与合并条件 | 使用 $\text{ppn} \oplus (1 \ll \text{order})$ 计算伙伴页号 | 必须对绝对物理页号做异或；物理相邻的两个同阶空闲块若不属于同一个 $2^{\text{order}+1}$ 对齐父块，不能合并 |
-| 分层内存管理架构 | 底层 Buddy/Best-Fit 负责连续物理页，上层 SLUB 负责字节级对象 | 两层通过 `alloc_pages`/`free_pages` 解耦；SLUB 将元数据放在页首内联存储，不侵占 `struct Page` 的分配器字段 |
-| 页表映射与物理分配的职责边界 | `entry.S` 建立 $1\text{ GiB}$ Sv39 根级大页映射；QEMU 按 $4\text{ KiB}$ 填充软件 TLB | 页表只定义地址转换关系（映射了 $1\text{ GiB}$ 不代表真有 $1\text{ GiB}$ 物理内存）；分配器则负责追踪实际存在的 RAM 哪些已被使用 |
+**本实验中的重要知识点及其与 OS 原理的联系**
 
-### 6.2 AI 辅助内核开发的实践体会
+1. **物理页帧与管理信息。** 连续内存管理需要记录空闲块的起始位置和长度。实验以4 KiB为单位建立 `struct Page` 数组，用空闲块首页及链表组织空闲区。`Page *` 指向管理元数据，`npage` 是物理页号上界，描述符数量为 `npage - nbase`。数组自身同样占用RAM，因此初始化时要先扣除固件、内核和元数据空间，再登记空闲页。
 
-在本次实验中，我们全程使用结构化提示词驱动 AI 完成代码编写与测试构造，总结出以下几点工程经验：
+2. **First-Fit、Best-Fit与碎片。** First-Fit取第一个满足要求的空闲块，Best-Fit取最小合适块。两种策略共享链表和释放合并接口，差异集中在选块过程。课本中的Best-Fit可以按块大小组织空闲区，实验则按地址组织并遍历选择，便于检查相邻块。按页精确切割仍可能留下外部碎片，最佳匹配也不能保证后续申请序列中的整体效果最优。
 
-1. **在提示词中显式固化接口不变量与单位语义。** 操作系统底层代码对地址类型和边界极其敏感。在模块一和 Buddy 的提示词中，我们明确区分了虚拟地址、物理地址、绝对物理页号（PPN）和描述符数组下标，并规定了“申请 $n$ 页向上取整占用 $2^k$ 页，释放时仍传入原始请求页数 $n$”的接口契约。把这些跨模块的约定写进 `[RELY]` 和 `[SPECIFICATION]`，有效避免了 AI 在生成 SLUB 大对象回收代码时出现页数不匹配的错误。
-2. **将“功能实现”与“测试构造”拆分为独立的两轮对话。** 如果让 AI 在写完分配器的同时顺手写测试，它很容易顺着刚刚写出的代码逻辑去凑测试断言，导致测试失去捉虫能力。我们将流程拆开：第二轮测试提示词要求 AI 建立独立的页面占用位图、用不同于生产代码的算法推导预期值，并强制在每次操作后扫描全表做结构一致性审计，从而真正检验了拆分、合并与边界处理的正确性。
-3. **利用受控故障注入验证异常路径。** 内存分配器的溢出处理和无内存可用（OOM）路径在常规运行中很难触发。通过在测试构建中引入轻量级的单次取页失败注入，并断言故障标志确实被消费（防止从已有缓存槽位分配而绕过取页路径），我们可靠地验证了分配失败时的状态回滚与无泄漏特性。
+3. **Buddy的伙伴定位与合并。** Buddy按二次幂页数取整并分阶管理，利用 `ppn XOR (1 << order)` 定位伙伴。与普通相邻块合并相比，它要求两块同阶、空闲且属于同一个对齐父块，因此能统一拆分与合并规则，但会为非二次幂请求引入内部碎片。
+
+4. **页表映射与物理分配。** 页表定义虚拟页与物理页的对应关系，MMU结合页内偏移完成地址翻译，TLB缓存近期映射。实验采用Sv39，启动页表使用1 GiB根级叶子映射，QEMU软件TLB则按4 KiB填充。分配器负责追踪实际RAM中的可用页，映射覆盖的范围与实际内存容量、分配粒度分别由不同机制确定。
+
+5. **分层内存管理。** 底层Buddy或Best-Fit提供连续物理页，上层SLUB将页面划分为固定尺寸的对象槽位，通过 `alloc_pages()`、`free_pages()` 衔接。页头保存slab元数据，避免占用 `Page` 的分配器字段。相比每个小对象独占整页，尺寸分类提高了利用率，同时也会因类别取整留下内部碎片。这一层体现的是实验扩展中的对象分配机制。
+
+**OS 原理中重要但本实验未涉及的知识点**
+
+1. **按需加载与缺页处理。** 按需加载在程序实际访问某页时再准备对应数据，缺页处理需要分配页帧、加载内容、更新页表并重新执行指令。Lab2 主要完成物理页管理和启动映射，尚未实现这一套由缺页异常触发的加载流程。
+
+2. **页面置换。** 内存不足时，FIFO、LRU、Clock 等算法用于选择需要换出的已占用页面，为新页面腾出页帧。Lab2 的 First-Fit、Best-Fit 和 Buddy 选择的是空闲块；页面置换则需要结合页面的使用情况和外存保存其内容，解决的是另一个层次的问题。
+
+3. **工作集与缺页率控制。** 工作集反映进程近期访问的页面集合，缺页率可以帮助系统判断分配给进程的物理页是否充足，并据此调整驻留页数。Lab2 尚未建立进程运行时的页面访问统计，也没有按进程需求动态调整内存资源的机制。
+
+### 6.2 AI 协作开发的经验
+
+1. **在提示词中写清接口和单位。** 底层代码对地址类型和边界很敏感。明确区分虚拟地址、物理地址、物理页号与描述符数组下标，并约定Buddy申请页数取整、释放仍传原始请求页数，可以使页分配器与SLUB的大对象回收接口保持一致。
+
+2. **提示词需要明确，但不必一味追求详细。** 在 Best-Fit 任务中，我们将任务、依赖、接口和行为规格逐项展开，形成了一份较长的提示词，首轮生成的实现通过了测试。但整理提示词花费了较多时间，其中部分结构定义和接口信息也可以由 AI 直接阅读源码获得。因此，提示词应重点说明最小适配规则、修改范围、需要保留的测试、分配器接入和验收要求，将具体实现交给 AI 结合工程分析。这次经历也让我们认识到，提示词设计需要同时考虑表达清楚和准备成本。
+
+3. **将实现与测试设计分开。** Buddy与SLUB分别使用实现、测试两份提示词。测试阶段使用独立的页面占用记录和预期值推导方式，并在操作后检查链表与计数，减少测试只是重复实现逻辑的问题。
+
+4. **通过受控故障注入检查失败恢复。** SLUB测试中加入单次取页失败，并检查故障标志确实被消费，覆盖新建slab、扩展和大对象取页失败后的状态保持与回收。这比单纯反复执行正常申请更容易检查异常路径。
+
+5. **生成代码后仍需理解并验证状态变化。** Best-Fit中的选块、余块登记和前后合并需要自己读懂；模块一在交付前后检查描述符，能区分初始化与分配器各自的处理。运行时还应确认管理器名称，避免实现完成后仍在检查其他分配器。模块一的日志读取与旧PASS问题也说明，测试工具本身需要核对。

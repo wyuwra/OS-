@@ -13,4 +13,4 @@
 | [本次完整验证](evidence/final-20261021/results.json) | 两种配置的构建、启动、评分及源码哈希 |
 | [截图来源](images/image-sources.json) | 模块一、MMU、Buddy、SLUB及评分截图与日志对应关系 |
 
-Buddy九组自检与SLUB八组测试通过。仓库默认启用Best-Fit，验收配置通过Page Init与Best-Fit检查，得到20/20；Buddy配置的课程评分为10/20。各结果对应的配置与命令见主报告第5.9节。
+Buddy九组自检与SLUB八组测试通过。仓库默认启用Best-Fit，验收配置通过Page Init与Best-Fit检查，得到20/20；Buddy配置的课程评分为10/20。各结果对应的配置与命令见[主报告第5.2节](report.md#best-fit-validation)和[第5.3节](report.md#buddy-slub-validation)。

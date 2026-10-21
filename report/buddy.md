@@ -96,7 +96,7 @@ SLUB CHECK ALL PASSED (8 groups, 1831 allocations, 1831 releases, 5502 content a
 
 [本次源码与配置记录](evidence/final-20261021/results.json)、[原始串口日志](evidence/final-20261021/buddy-qemu.log)和[截图显示命令](evidence/final-20261021/screenshots.json)分别记录验证输入、完整输出与图片来源。更早的[独立启动记录](evidence/sync-20261021-buddy/results.json)对应当时的内核快照。
 
-课程评分检查当前管理器是否为Best-Fit：Buddy配置为10/20，Best-Fit验收配置为20/20。Buddy的正确性由九组自检检验，评分及对应配置见主报告第5.9节。
+课程评分检查当前管理器是否为Best-Fit：Buddy配置为10/20，Best-Fit验收配置为20/20。Buddy的正确性由九组自检检验，评分及对应配置见[主报告第5.2节](report.md#best-fit-validation)和[第5.3节](report.md#buddy-slub-validation)。
 
 ## 五、实际提示词与报告入口
 
