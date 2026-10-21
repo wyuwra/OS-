@@ -1,0 +1,129 @@
+{
+  "date": "2026-10-21",
+  "status": "INTERACTIVE_OBSERVATIONS_CONFIRMED",
+  "basis": "User-captured terminal screenshots, checked against matching QEMU 4.1.1 source; not an automated regression run",
+  "three_terminal_flow": [
+    "make debug with debug QEMU",
+    "native GDB attaches QEMU process",
+    "make gdb controls guest ucore"
+  ],
+  "kernel_source_unchanged_since_comment_audit": true,
+  "source_reference": "../current-review-20261021/results.json plus ../comment-marker-check-20261021/results.json",
+  "fetch": {
+    "va": "0xffffffffc0200404",
+    "satp": "0x800000000008020a",
+    "root_pa": "0x8020a000",
+    "levels": 3,
+    "iteration": 0,
+    "index": 511,
+    "pte_pa": "0x8020aff8",
+    "pte": "0x200000cf",
+    "ppn": "0x80000",
+    "leaf_mapping_size": "1 GiB",
+    "returned_4k_page_base": "0x80200000",
+    "full_pa": "0x80200404"
+  },
+  "software_tlb": {
+    "cached_page_size": 4096,
+    "virtual_page": "0xffffffffc0200000",
+    "physical_page": "0x80200000",
+    "translation_return": 0,
+    "permissions": 7,
+    "observed_hit_branch": "cputlb.c:1030 -> 1039",
+    "caveat": "get_page_addr_code is an instruction-fetch/code-page path; data fast paths must not be conflated with it"
+  },
+  "data_store": {
+    "access_type": "MMU_DATA_STORE",
+    "size": 8,
+    "va": "0xffffffffc0209ff8",
+    "returned_4k_page_base": "0x80209000",
+    "full_pa": "0x80209ff8",
+    "translation_return": 0,
+    "static_instruction_cross_check": "kern_init+0x16: sd ra,8(sp), after addi sp,sp,-16; bootstacktop=0xffffffffc020a000"
+  },
+  "bare": {
+    "satp": 0,
+    "mmu_idx": 1,
+    "va": "0x80200000",
+    "pa": "0x80200000",
+    "path": [
+      "get_page_addr_code",
+      "tlb_fill",
+      "riscv_cpu_tlb_fill",
+      "get_physical_address"
+    ],
+    "observed_statement": "cpu_helper.c:197 *physical = addr",
+    "startup": "fresh QEMU process, not monitor system_reset"
+  },
+  "issues": [
+    "C source assert statement was mistakenly entered as a GDB command; next correctly passed the assertion",
+    "Ctrl+C in native GDB stopped the QEMU main thread in poll, where env/addr are out of scope",
+    "monitor system_reset did not reach the target S-mode Bare branch; guest repeatedly observed at OpenSBI trap entry 0x80000474",
+    "Fresh QEMU process with PID 8562 successfully reached S-mode Bare; hot-reset root cause was not established"
+  ],
+  "images": [
+    {
+      "image": "mmu-01-call-chain.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "f65527e0d938e04693d0af1d642c9d5c972ed8c0f62acf089efbb773c1b13abe"
+    },
+    {
+      "image": "mmu-02-satp-root.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "4d00fd6d97c64e4bec33c4875d8d047225dc416b1d67f77b8a656318db15a5ed"
+    },
+    {
+      "image": "mmu-03-page-table-entry.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "4cca441a5897cb6af0315b861ea72cd764b9d63599e268b1c261c327557d4507"
+    },
+    {
+      "image": "mmu-04-physical-address.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "c49825614c3dbd7e93d169085ed41b9b11de78cab2e1145931546ce8c077f579"
+    },
+    {
+      "image": "mmu-05-tlb-fill.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "fb18284d6efb8f841ef4ecaaacd7880237730d53a3fa509505ca1daa0b38e733"
+    },
+    {
+      "image": "mmu-06-tlb-after-fill.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "c6418813075f14bd5d945f09ab3006c8efb4c284bc9435fe8d28f4f4457d4467"
+    },
+    {
+      "image": "mmu-07-tlb-hit.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "bc22118c467f59d5f336c53050d6ff9101e837f052999d7e7dc9fdf492237ee4"
+    },
+    {
+      "image": "mmu-08-data-access.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "44a91da7570750a46457d772243ee3c1e0a0d68066f4c7e77bc0b62f5e9875c6"
+    },
+    {
+      "image": "mmu-09-bare-mode.png",
+      "capture_date": "2026-10-21",
+      "captured_by": "user",
+      "kind": "interactive host GDB screenshot from three-terminal QEMU/ucore session",
+      "image_sha256": "b66801b9211536bba7dad825840eb032a33b134dba1ac74c3df53ed034f41637"
+    }
+  ]
+}

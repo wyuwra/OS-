@@ -1,0 +1,26 @@
+Breakpoint 1 at 0x39939b: file /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c, line 438.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+[New Thread 0x7ffff77ff6c0 (LWP 377)]
+[New Thread 0x7ffff4dff6c0 (LWP 378)]
+[Switching to Thread 0x7ffff4dff6c0 (LWP 378)]
+
+Thread 3 "qemu-system-ris" hit Breakpoint 1, riscv_cpu_tlb_fill (cs=0x555556277ef0, address=18446744072637907972, size=0, access_type=MMU_INST_FETCH, mmu_idx=1, probe=false, retaddr=0) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c:438
+438	{
+$1 = 0xffffffffc0200404
+$2 = MMU_INST_FETCH
+#0  riscv_cpu_tlb_fill (cs=0x555556277ef0, address=18446744072637907972, size=0, access_type=MMU_INST_FETCH, mmu_idx=1, probe=false, retaddr=0) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c:438
+#1  0x00005555558337a3 in tlb_fill (cpu=0x555556277ef0, addr=18446744072637907972, size=0, access_type=MMU_INST_FETCH, mmu_idx=1, retaddr=0) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/accel/tcg/cputlb.c:878
+#2  0x0000555555833e4d in get_page_addr_code (env=0x555556280900, addr=18446744072637907972) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/accel/tcg/cputlb.c:1032
+#3  0x00005555558588b3 in tb_htable_lookup (cpu=0x555556277ef0, pc=18446744072637907972, cs_base=0, flags=24577, cf_mask=4278714368) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/accel/tcg/cpu-exec.c:339
+#4  0x0000555555851889 in tb_lookup__cpu_state (cpu=0x555556277ef0, pc=0x7ffff4dfe420, cs_base=0x7ffff4dfe418, flags=0x7ffff4dfe414, cf_mask=4278714368) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/include/exec/tb-lookup.h:43
+Breakpoint 2 at 0x5555558ec786: file /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c, line 158.
+
+Thread 3 "qemu-system-ris" hit Breakpoint 2, get_physical_address (env=0x555556280900, physical=0x7ffff4dfe230, prot=0x7ffff4dfe224, addr=18446744072637907972, access_type=2, mmu_idx=1) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c:158
+158	{
+$3 = 0x800000000008020a
+$4 = 0xffffffffc0200404
+0x00005555558ed462 in riscv_cpu_tlb_fill (cs=0x555556277ef0, address=18446744072637907972, size=0, access_type=MMU_INST_FETCH, mmu_idx=1, probe=false, retaddr=0) at /home/wyuwra/.local/src/lab2-mmu/qemu-4.1.1/target/riscv/cpu_helper.c:451
+451	    ret = get_physical_address(env, &pa, &prot, address, access_type, mmu_idx);
+Value returned is $5 = 0
+$6 = 0x80200000

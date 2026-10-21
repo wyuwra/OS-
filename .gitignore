@@ -1,0 +1,9 @@
+# Lab2 local build outputs
+/lab2_new/bin/
+/lab2_new/obj/
+/lab2_new/.gdb_history
+/lab2_new/.qemu.out
+/lab2_new/.gdb.in
+
+# Original course archive
+/lab2.zip

@@ -1,6 +1,9 @@
 # Lab2 简化 SLUB：实现与本轮验证
 
-本记录对应 2026-10-21 的第一份 SLUB 实现任务，源码在 `lab2/lab2_new/`，分支为 `lab2`。
+> 2026-10-21 同步组内远程报告后，确认本模块负责人为 **2412737-罗元伟**；下文“当轮未提供身份”的说明保留当时记录，最终分工以 report.md 为准。
+
+
+本记录对应 2026-10-21 的第一份 SLUB 实现任务，源码在 `lab2_new/`，分支为 `lab2`。
 本轮工具为 Codex（GPT-6）；未提供成员姓名、学号或本轮署名，不据此补写成员信息。
 实现已在真实 RISC-V QEMU 内核运行；当前验证范围是接入和冒烟检查，完整 SLUB 测试留给第二份任务。
 
@@ -14,17 +17,16 @@
 
 | 文件 | 本轮变更 |
 |---|---|
-| [`slub.h`](../lab2/lab2_new/kern/mm/slub.h) | 新增三个公共接口及调用契约 |
-| [`slub.c`](../lab2/lab2_new/kern/mm/slub.c) | 新增缓存、slab、连续页大对象、分配和回收实现 |
-| [`init.c`](../lab2/lab2_new/kern/init/init.c) | `pmm_init()` 后初始化 SLUB 并运行有限冒烟检查 |
+| [`slub.h`](../lab2_new/kern/mm/slub.h) | 新增三个公共接口及调用契约 |
+| [`slub.c`](../lab2_new/kern/mm/slub.c) | 新增缓存、slab、连续页大对象、分配和回收实现 |
+| [`init.c`](../lab2_new/kern/init/init.c) | `pmm_init()` 后初始化 SLUB 并运行有限冒烟检查 |
 | [`prompt.md`](prompt.md) | 本轮实际用户提示词原文、执行情况和迭代说明 |
-| [`历史 prompt.md`](../lab2/report/prompt.md)、[`原报告`](../lab2/report/report.md) | 保留既有记录，追加索引并更新 SLUB 阶段状态 |
+| [`历史 prompt.md`](prompt.md#stage-1)、[`原报告`](report.md) | 保留既有记录，追加索引并更新 SLUB 阶段状态 |
 | `report/evidence/slub-implementation/` | 本轮原始编译、运行、评分日志与源码哈希 |
 
 Makefile 自动收集 `kern/mm` 下的 C 文件，所以未改动构建规则。
 `pmm.c`、`struct Page`、Buddy 和 Best-Fit 均保持原样；没有把 SLUB 注册为 `pmm_manager`。
-仓库原有 `lab2/report/` 与源码位置未重组，新增材料按本轮指定放在根目录 `report/`。
-这不是完整实验的最终交付整理，根目录 `code/`、`report/report.md` 等整组交付规范仍需最终整理时核对。
+上述为 SLUB 开发阶段的记录。2026-10-21 已按用户要求将源码统一到根目录 `lab2_new/`，两处报告统一到根目录 `report/`，本文链接及运行路径已随迁移调整；原始日志和提示词代码块保留当时内容。整组最终验收事项仍需核对。
 
 ## 接口与底层语义
 
@@ -103,7 +105,7 @@ SLUB 的所有状态均在静态缓存或自己申请的物理页内，不读写
 
 实际环境：WSL、`riscv64-unknown-elf-gcc` 13.2.0、QEMU 4.1.1、默认 128 MiB RAM。
 使用工作区已有的 QEMU 包装器；所有临时构建与评分副本均在工作区 `tmp/` 下。
-以下命令从 `workspace/lab2/lab2_new/` 执行：
+以下命令从 `workspace/lab2_new/` 执行：
 
 ```sh
 make -j2 OBJDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/obj BINDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/bin

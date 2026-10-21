@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-21",
+  "change": "Only replace YOUR CODE in original lab2 function1 comment with confirmed student ID 2412832",
+  "file": "kern/mm/pmm.c",
+  "before_sha256": "d1ff2d9a793d43bfd4138a2d9d3c8beef49a192b03754d667506152fd6ceb7b4",
+  "after_sha256": "5e74a80e55048e0cbbf4338cfbe127485a2b2a95fe151df20492b6f9ea9f99f9",
+  "only_exact_comment_replacement": true,
+  "kernel_rebuilt": false,
+  "original_task_markers": [
+    {
+      "original_file": "lab2/lab2_new/kern/mm/best_fit_pmm.c",
+      "line": 6,
+      "marker": "//lab2 function2-2 YOUR CODE"
+    },
+    {
+      "original_file": "lab2/lab2_new/kern/mm/pmm.c",
+      "line": 64,
+      "marker": "//lab2 function1 YOUR CODE"
+    }
+  ],
+  "best_fit_marker": "//lab2 function2-2 2413276",
+  "previous_build_evidence": "../current-review-20261021/results.json"
+}

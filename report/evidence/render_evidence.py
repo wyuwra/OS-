@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render readable PNG evidence from saved logs, not terminal screenshots.
 
-Run with Windows Python + Pillow: python lab2/report/evidence/render_evidence.py
+Run with Windows Python + Pillow: python report/evidence/render_evidence.py
 Input snippets are preserved verbatim except CRLF normalization and line wrapping.
 """
 import hashlib

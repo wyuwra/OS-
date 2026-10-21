@@ -1,5 +1,8 @@
 # Lab2 SLUB 第二阶段：内核测试与实际结果
 
+> 2026-10-21 同步组内远程报告后，确认本模块负责人为 **2412737-罗元伟**；下文“当轮未提供身份”的说明保留当时记录，最终分工以 report.md 为准。
+
+
 2026-10-21，Codex（GPT-6）针对上一阶段工作区的实际 `slub.c/.h` 实现并运行测试。
 开始时位于 `lab2`，上一阶段代码和报告均未提交；既有内容保留，未创建 worktree、提交或推送。
 本轮成员姓名和学号未提供，不新增成员署名。
@@ -14,11 +17,11 @@
 
 | 文件 | 本轮修改 |
 |---|---|
-| [`slub_test.c`](../lab2/lab2_new/kern/mm/slub_test.c) | 新增八组测试、独立对象记录、模式生成、区间检查、完整内容复核、页数与失败恢复检查 |
-| [`slub_test.h`](../lab2/lab2_new/kern/mm/slub_test.h) | 新增 `void slub_check(void)` 与测试构建专用辅助接口 |
-| [`slub.c`](../lab2/lab2_new/kern/mm/slub.c) | 加入统一取页包装；仅测试构建启用只读头部长度查询和一次性取页失败注入 |
-| [`init.c`](../lab2/lab2_new/kern/init/init.c) | 测试构建在 `pmm_init(); slub_init();` 后调用 `slub_check()`，普通构建保留冒烟检查 |
-| [`Makefile`](../lab2/lab2_new/Makefile) | 增加默认关闭的 `SLUB_TEST` 选项；源码仍由原有规则自动收集 |
+| [`slub_test.c`](../lab2_new/kern/mm/slub_test.c) | 新增八组测试、独立对象记录、模式生成、区间检查、完整内容复核、页数与失败恢复检查 |
+| [`slub_test.h`](../lab2_new/kern/mm/slub_test.h) | 新增 `void slub_check(void)` 与测试构建专用辅助接口 |
+| [`slub.c`](../lab2_new/kern/mm/slub.c) | 加入统一取页包装；仅测试构建启用只读头部长度查询和一次性取页失败注入 |
+| [`init.c`](../lab2_new/kern/init/init.c) | 测试构建在 `pmm_init(); slub_init();` 后调用 `slub_check()`，普通构建保留冒烟检查 |
+| [`Makefile`](../lab2_new/Makefile) | 增加默认关闭的 `SLUB_TEST` 选项；源码仍由原有规则自动收集 |
 | [`prompt.md`](prompt.md)、历史报告与提示词 | 追加第二份实际提示词、执行和测试契约调整；保留原记录 |
 | `report/evidence/slub-tests/` | 编译、两种构建的串口、评分、栈帧审计和源码哈希 |
 
@@ -75,7 +78,7 @@
 
 ## 实际命令
 
-从 `workspace/lab2/lab2_new/` 执行，WSL 下使用 GCC 13.2.0、QEMU 4.1.1、默认单 hart 和 128 MiB RAM。
+从 `workspace/lab2_new/` 执行，WSL 下使用 GCC 13.2.0、QEMU 4.1.1、默认单 hart 和 128 MiB RAM。
 这些变量展开后就是实际运行参数；结果 JSON 另存完整参数数组。所有临时构建与评分副本均位于工作区 `tmp/`。
 
 ```sh
