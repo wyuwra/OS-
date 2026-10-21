@@ -1,0 +1,22 @@
+{
+  "bare": {
+    "va": "2149580800",
+    "satp": "0",
+    "mmu_idx": "1",
+    "page_pa": "2149580800",
+    "ret_before_assignment": "1",
+    "get_physical_return": "0"
+  },
+  "store": {
+    "va": "18446744072637927416",
+    "size": "8",
+    "access_type": "MMU_DATA_STORE",
+    "satp": "9223372036855300613",
+    "page_pa": "2149597184",
+    "full_pa": "0x80204ff8",
+    "ret_before_assignment": "1",
+    "get_physical_return": "0"
+  },
+  "status": "BARE_AND_DATA_STORE_CONFIRMED",
+  "return_observation": "finish stopped before caller ret assignment; return-value confirms success"
+}
