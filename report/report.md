@@ -640,7 +640,7 @@ break cpu_helper.c:197 if mmu_idx == 1 && (env->satp >> 60) == 0
 
 本次观察覆盖正常映射、取指与数据写入、TLB 填充与命中，以及 Bare 模式对比。
 
-**本机复现验证（2026-10-21）。** 在胡楚骅的 WSL 环境中，以默认 Best-Fit 的普通构建完成双 GDB 观察：宿主 GDB 启动带符号的 QEMU，RISC-V GDB 连接内核。取指地址为 `0xffffffffc02003f4`，`satp=0x8000000000080205`，根页表物理地址为 `0x80205000`；读取第 511 项得到 `PTE=0x200000cf`，完整物理地址为 `0x802003f4`。随后观察到 4 KiB 软件 TLB 填充，再次查询从命中判断直接到达第 1039 行。另一次启动确认 S 模式 Bare 下 `0x80200000` 直接对应同一物理地址，以及 8 字节数据写入由 `0xffffffffc0204ff8` 转换到 `0x80204ff8`。本机地址与前述截图对应不同构建，分别记录。原始过程见[取指与 TLB 记录](evidence/best-fit-local-20261021/mmu-results.json)、[Bare 与数据写入记录](evidence/best-fit-local-20261021/mmu-bare-store-results.json)；展示启动步骤见[本机调试展示](本机调试展示.md)。
+**本机复现验证（2026-10-21）。** 在胡楚骅的 WSL 环境中，以默认 Best-Fit 的普通构建完成双 GDB 观察：宿主 GDB 启动带符号的 QEMU，RISC-V GDB 连接内核。取指地址为 `0xffffffffc02003f4`，`satp=0x8000000000080205`，根页表物理地址为 `0x80205000`；读取第 511 项得到 `PTE=0x200000cf`，完整物理地址为 `0x802003f4`。随后观察到 4 KiB 软件 TLB 填充，再次查询从命中判断直接到达第 1039 行。另一次启动确认 S 模式 Bare 下 `0x80200000` 直接对应同一物理地址，以及 8 字节数据写入由 `0xffffffffc0204ff8` 转换到 `0x80204ff8`。本机地址与前述截图对应不同构建，分别记录。
 
 ## 五、测试与验证
 
@@ -712,7 +712,7 @@ Best-Fit 实现完成后，在 WSL 中选择 `best_fit_pmm_manager`，进行编�
 
 上述截图对应 Best-Fit 任务完成时的版本。接入 Buddy、SLUB 后，又在临时副本中选择 Best-Fit，启用 `SLUB_TEST=1`，执行官方注入器和评分脚本：课程评分仍为 20/20，退出码为 0，SLUB 八组测试同时通过。对应[评分日志](evidence/current-review-20261021/best-fit-slub-grade/grade.log)、[运行日志](evidence/current-review-20261021/best-fit-slub-grade/qemu.log)及[复核汇总](evidence/current-review-20261021/results.json)。
 
-2026-10-21 在胡楚骅本机将默认管理器正式切换为 Best-Fit，使用 GCC 15.1.0、RISC-V GDB 16.3 和 QEMU 4.1.1 重新验证：`make -j2` 成功，正常启动通过 Best-Fit 自检和 SLUB 基本检查；`make grade` 的两项检查均为 OK，得分 20/20，退出码为 0。独立的 `SLUB_TEST=1` 构建通过八组测试，完成 1831 次分配与释放、5502 次内容核验，并恢复到 31905 个空闲页。记录见[本机验证汇总](evidence/best-fit-local-20261021/results.json)、[评分日志](evidence/best-fit-local-20261021/grade.log)、[正常启动](evidence/best-fit-local-20261021/boot-normal.log)和[完整 SLUB 输出](evidence/best-fit-local-20261021/boot-slub.log)。
+2026-10-21 在胡楚骅本机将默认管理器正式切换为 Best-Fit，使用 GCC 15.1.0、RISC-V GDB 16.3 和 QEMU 4.1.1 重新验证：`make -j2` 成功，正常启动通过 Best-Fit 自检和 SLUB 基本检查；`make grade` 的两项检查均为 OK，得分 20/20，退出码为 0。独立的 `SLUB_TEST=1` 构建通过八组测试，完成 1831 次分配与释放、5502 次内容核验，并恢复到 31905 个空闲页。
 
 ### 5.3 Buddy 与 SLUB 测试
 
@@ -746,7 +746,7 @@ check_alloc_page() succeeded!
 
 课程评分中的 Best-Fit 项检查 `pmm_manager` 是否指向 `best_fit_pmm_manager`。测试 Buddy 时选择了另一管理器，因此该项为 FAIL；最终验收选择 Best-Fit，Buddy 的正确性由其独立自检结果说明。两种配置的评分见[Buddy 评分日志](evidence/current-review-20261021/buddy-slub-grade/grade.log)和[Best-Fit 评分日志](evidence/current-review-20261021/best-fit-slub-grade/grade.log)，测试汇总见[配置对照记录](evidence/current-review-20261021/results.json)。
 
-上述配置对照完成后，胡楚骅本机又在临时副本中单独选择 Buddy，以 GCC 15.1.0、QEMU 4.1.1 完成 Buddy 九组及 SLUB 八组测试。正式源码保持默认 Best-Fit，结果见[本机 Buddy 与 SLUB 输出](evidence/best-fit-local-20261021/buddy-slub-boot.log)。
+上述配置对照完成后，胡楚骅本机又在临时副本中单独选择 Buddy，以 GCC 15.1.0、QEMU 4.1.1 完成 Buddy 九组及 SLUB 八组测试。正式源码保持默认 Best-Fit。
 
 ## 六、实验总结与收获
 
