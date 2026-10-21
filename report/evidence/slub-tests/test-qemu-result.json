@@ -1,0 +1,18 @@
+{
+  "command": [
+    "make",
+    "qemu",
+    "SLUB_TEST=1",
+    "OBJDIR=/mnt/d/wsl-share/OS/tmp/slub-tests/test-obj",
+    "BINDIR=/mnt/d/wsl-share/OS/tmp/slub-tests/test-bin",
+    "QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1"
+  ],
+  "markers": {
+    "BUDDY CHECK ALL PASSED": true,
+    "check_alloc_page() succeeded!": true,
+    "SLUB CHECK ALL PASSED": true
+  },
+  "panic_seen": false,
+  "elapsed_seconds": 1.307,
+  "exit_code_after_stopping_own_process_group": -15
+}

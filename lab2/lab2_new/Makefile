@@ -34,6 +34,12 @@ CFLAGS  := -mcmodel=medany -std=gnu99 -Wno-unused -Werror
 CFLAGS	+= -fno-builtin -Wall -O2 -nostdinc $(DEFS)
 CFLAGS	+= -fno-stack-protector -ffunction-sections -fdata-sections
 CFLAGS	+= -g
+# Opt-in test image: layout query and one-shot page failure seam are absent
+# from normal builds. Use distinct OBJDIR/BINDIR when switching this option.
+SLUB_TEST ?= 0
+ifeq ($(SLUB_TEST),1)
+CFLAGS += -DSLUB_TEST
+endif
 CFLAGS2 = $(CFLAGS) -D ucore_test
 CTYPE	:= c S
 LD      := $(GCCPREFIX)ld

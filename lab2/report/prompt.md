@@ -2815,3 +2815,17 @@ Post-Condition：
   - 继续阅读生成代码，保存正常启动、自检与 `make grade` 的真实终端输出和必要截图，再补充正式报告的 Best-Fit 部分及改进问题。
   - 手册任务二明确要求在实验报告中提交本任务使用的 prompt；`prompt.md` 保留完整过程，`report.md` 仍需呈现该提示词。参考：[任务二要求](http://oslab.mobisys.top/lab2026/_book/lab2/lab2_2_1_exercise.html)、[报告要求](http://oslab.mobisys.top/lab2026/_book/lab2/lab2_5_labs_requirement.html)。
   - 当前代码、报告和提示词修改尚未提交或推送。
+
+
+## 十、SLUB：第一份实现提示词与接入（2026-10-21）
+
+本轮实际用户提示词完整原文及执行迭代追加在仓库根目录 [report/prompt.md](../../report/prompt.md)，本文件的全部既有记录保留。
+
+本轮仅收到一份实现提示词，新增 SLUB 接口、八类缓存、页内头部、大对象连续页与初始化接入。首次编译和 QEMU 冒烟检查通过；完整 SLUB 测试提示词尚未收到。课程 make grade 实际 10/20，Page Init 通过，Best-Fit 项要求选择 Best-Fit 而原分支启用 Buddy；未更改管理器来迎合评分。详细流程和原始日志见 [SLUB 实现与验证记录](../../report/slub.md)。未提交或推送。
+
+
+## 十一、SLUB：第二份内核测试提示词（2026-10-21）
+
+第二份实际用户提示词完整原文及执行迭代已追加到 [根目录 report/prompt.md](../../report/prompt.md)。新增 `slub_test.c/.h`，测试构建用 `SLUB_TEST=1` 接入 `slub_check()`，普通构建保留冒烟检查。八组测试、1831 次分配释放和 5502 次内容复核全部通过；三处取页失败注入均被消费并恢复。完整覆盖表、资源上界、命令与证据见 [SLUB 内核测试记录](../../report/slub-tests.md)。
+
+未发现分配器算法缺陷；仅新增测试辅助入口与取页包装。旧冒烟检查的指定地址复用断言超出接口承诺，本轮改为非空与对齐；新测试用数据、区间和页数检查复用。课程 grade 仍为 10/20（原分支使用 Buddy，Best-Fit 检查要求 Best-Fit），普通构建与测试构建均实际启动成功。未提交或推送。

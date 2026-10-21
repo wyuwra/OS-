@@ -1,0 +1,70 @@
+
+OpenSBI v0.4 (Jul  2 2019 11:53:53)
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name          : QEMU Virt Machine
+Platform HART Features : RV64ACDFIMSU
+Platform Max HARTs     : 8
+Current Hart           : 0
+Firmware Base          : 0x80000000
+Firmware Size          : 112 KB
+Runtime SBI Version    : 0.1
+
+PMP0: 0x0000000080000000-0x000000008001ffff (A)
+PMP1: 0x0000000000000000-0xffffffffffffffff (A,R,W,X)
+DTB Init
+HartID: 0
+DTB Address: 0x82200000
+Physical Memory from DTB:
+  Base: 0x0000000080000000
+  Size: 0x0000000008000000 (128 MB)
+  End:  0x0000000087ffffff
+DTB init completed
+(THU.CST) os is loading ...
+Special kernel symbols:
+  entry  0xffffffffc02003f2 (virtual)
+  etext  0xffffffffc0205966 (virtual)
+  edata  0xffffffffc020c018 (virtual)
+  end    0xffffffffc0218e64 (virtual)
+Kernel executable memory footprint: 99KB
+memory management: buddy_pmm_manager
+physical memory map:
+  memory: 0x0000000008000000, [0x0000000080000000, 0x0000000088000000).
+  managed end: 0x0000000088000000, nbase: 0x80000, npage: 0x88000
+  page descriptors: VA 0xffffffffc0219000, PA 0x0000000080219000, 1310720 bytes
+  free memory: [0x0000000080359000, 0x0000000088000000), 31911 pages
+buddy_check: global setup BEGIN
+buddy_check: real arena ppn=0x80380, 64 test + 64 guard pages
+[buddy 1] initialization and region boundaries: BEGIN
+[buddy 1] initialization and region boundaries: PASS
+[buddy 2] powers of two, rounding and non-overlap: BEGIN
+[buddy 2] powers of two, rounding and non-overlap: PASS
+[buddy 3] multilevel splitting and reuse of every half: BEGIN
+[buddy 3] multilevel splitting and reuse of every half: PASS
+[buddy 4] buddy pairs and recursive merging in three orders: BEGIN
+[buddy 4] buddy pairs and recursive merging in three orders: PASS
+[buddy 5] adjacent equal-order blocks that are not buddies: BEGIN
+[buddy 5] adjacent equal-order blocks that are not buddies: PASS
+[buddy 6] unequal orders, holes and allocated barriers: BEGIN
+[buddy 6] unequal orders, holes and allocated barriers: PASS
+[buddy 7] exhaustion, huge requests and failure atomicity: BEGIN
+[buddy 7] exhaustion, huge requests and failure atomicity: PASS
+[buddy 8] reproducible mixed sequence and complete recovery: BEGIN
+[buddy 8] reproducible mixed sequence and complete recovery: PASS
+[buddy 9] real allocator restoration and outside allocation: BEGIN
+[buddy 9] real allocator restoration and outside allocation: PASS (31911 free pages)
+buddy_check: whole-block free uses original base/n; precondition violations excluded from normal run
+BUDDY CHECK ALL PASSED (9 groups, 303 arena operations, 326 structure audits)
+check_alloc_page() succeeded!
+satp virtual address: 0xffffffffc020b000
+satp physical address: 0x000000008020b000
+[Test 1] Page Init: PASS
+[Test 2] Best-Fit: FAIL (pmm_manager=buddy_pmm_manager)
+SLUB smoke check passed (all pages reclaimed)

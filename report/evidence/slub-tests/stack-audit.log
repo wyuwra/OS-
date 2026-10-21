@@ -1,0 +1,12 @@
+Command: riscv64-unknown-elf-gcc -mcmodel=medany -std=gnu99 -Wno-unused -Werror -fno-builtin -Wall -O2 -nostdinc -fno-stack-protector -ffunction-sections -fdata-sections -g -DSLUB_TEST -Ilibs -Ikern/mm -Ikern/debug -fstack-usage -c kern/mm/slub_test.c -o /mnt/d/wsl-share/OS/tmp/slub-tests/stack-audit/slub_test.o
+kern/mm/slub_test.c:61:1:st_verify_one	48	static
+kern/mm/slub_test.c:138:1:st_empty	16	static
+kern/mm/slub_test.c:153:1:st_begin	32	static
+kern/mm/slub_test.c:146:1:st_pages	32	static
+kern/mm/slub_test.c:189:1:st_add_case	16	static
+kern/mm/slub_test.c:380:1:st_large_page_cost	16	static
+kern/mm/slub_test.c:165:1:st_end	16	static
+kern/mm/slub_test.c:125:1:st_free	32	static
+kern/mm/slub_test.c:442:1:st_failed_request	48	static
+kern/mm/slub_test.c:86:1:st_alloc	112	static
+kern/mm/slub_test.c:505:1:slub_check	256	static

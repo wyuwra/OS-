@@ -1,0 +1,18 @@
++ cc kern/init/entry.S
++ cc kern/init/init.c
++ cc kern/libs/stdio.c
++ cc kern/debug/panic.c
++ cc kern/driver/console.c
++ cc kern/driver/dtb.c
++ cc kern/mm/best_fit_pmm.c
++ cc kern/mm/buddy_pmm.c
++ cc kern/mm/default_pmm.c
++ cc kern/mm/pmm.c
++ cc kern/mm/slub.c
++ cc kern/mm/slub_test.c
++ cc libs/printfmt.c
++ cc libs/readline.c
++ cc libs/sbi.c
++ cc libs/string.c
++ ld /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/kernel
+riscv64-unknown-elf-objcopy /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/kernel --strip-all -O binary /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/ucore.img

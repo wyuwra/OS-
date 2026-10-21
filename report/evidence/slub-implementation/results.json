@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-21",
+  "branch": "lab2",
+  "base_commit": "b653657cc8ee7aaab0829963988dcabc4d7de85b",
+  "scope": "SLUB implementation and integration smoke check; comprehensive SLUB suite deferred",
+  "compiler": "riscv64-unknown-elf-gcc (13.2.0-11ubuntu1+12) 13.2.0",
+  "qemu": "QEMU emulator version 4.1.1",
+  "build": {
+    "command": [
+      "make",
+      "-j2",
+      "OBJDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/obj",
+      "BINDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/bin"
+    ],
+    "exit_code": 0
+  },
+  "boot": {
+    "command": [
+      "make",
+      "qemu",
+      "OBJDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/obj",
+      "BINDIR=/mnt/d/wsl-share/OS/tmp/slub-implementation/bin",
+      "QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1"
+    ],
+    "markers": {
+      "memory management: buddy_pmm_manager": true,
+      "BUDDY CHECK ALL PASSED": true,
+      "check_alloc_page() succeeded!": true,
+      "satp physical address:": true,
+      "SLUB smoke check passed (all pages reclaimed)": true
+    },
+    "panic_seen": false,
+    "exit_code_after_stopping_own_process_group": -15
+  },
+  "grade": {
+    "command": [
+      "make",
+      "grade",
+      "GRADE_TMP=/mnt/d/wsl-share/OS/tmp/slub-implementation/grade-tree",
+      "QEMU=/mnt/d/wsl-share/OS/tmp/buddy-implementation/qemu-system-riscv64-4.1.1"
+    ],
+    "exit_code": 2,
+    "scope": "Course Page Init / Best-Fit checks; not SLUB grading"
+  },
+  "grade_summary": "Page Init OK; Best-Fit WRONG because original pmm selection is Buddy; 10/20",
+  "sha256": {
+    "lab2/lab2_new/kern/mm/slub.c": "c221efeba9d4bfcfd0f8beeab95fe1058e949591f7a9d11ab55a0c6e53a42b18",
+    "lab2/lab2_new/kern/mm/slub.h": "7f728874811f027ec71b43d337c1f1e0d4006a38fb1484755481bfa9916f96a7",
+    "lab2/lab2_new/kern/init/init.c": "d1ca287cadbc44cd50a7fe52cabb9f629025d2733919ff75e5358dd4d12bdeaa",
+    "lab2/lab2_new/kern/mm/pmm.c": "665ea0cf41a1d84a09f486fbbc1f390e5b2048186e5b926122076d76d6d3a5bc",
+    "lab2/lab2_new/kern/mm/buddy_pmm.c": "1403fe2f41116341333a6cdc564d8a8cad3a1686edffa91f578d87d831ebdab5",
+    "lab2/lab2_new/kern/mm/buddy_pmm.h": "b6e6a3c36fb4cb54829ad0b3d380b10d68fa6742e584409c78c5b294d2c5dae6",
+    "lab2/lab2_new/kern/mm/pmm.h": "afd175be22d87008e4070dde7fc3c1cebe876b55aafeb6fb9a335f8fd66c93bc",
+    "lab2/lab2_new/kern/mm/memlayout.h": "c2ddc293e99649d4eb9772cf79fff4f2c5e7100e2b0c9c3d8700f3c00a49a6bd",
+    "lab2/lab2_new/kern/mm/mmu.h": "5a609b5bf5d83148614542dac524c85ad5b3481bd3ec3cf74bf289d442efa0e4",
+    "lab2/lab2_new/kern/init/entry.S": "0f32d455dd8dcaa99987eb2eafd64df5e7535e14477ed2aece8e599e3b911111",
+    "lab2/lab2_new/Makefile": "7e08d809582b5600eef924d4eb5d2f405b8cfd168a40804b32961aea6871e89f",
+    "lab2/lab2_new/tools/test_lab2.c": "6feb75f20361d95436856e525af80bef0c55b300391cda3a6deaeda53a0f118d"
+  }
+}
