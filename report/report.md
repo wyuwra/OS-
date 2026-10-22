@@ -1220,7 +1220,7 @@ Best-Fit 任务完成后，在 WSL 中执行编译、启动与评分，结果如
 
 ![Best-Fit 任务完成时的正常启动与分配器自检](images/best-fit-boot.png)
 
-接入 Buddy 与 SLUB 后，分别构建两种管理器配置。Best-Fit 配置开启 `SLUB_TEST=1`，课程评分仍为 20/20，同时通过 SLUB 八组测试。2026-10-21 胡楚骅本机以 GCC 15.1.0、QEMU 4.1.1 对正式切换为 Best-Fit 的代码重新编译、启动并执行 `make grade`，得到相同评分结果，独立 SLUB 测试也通过。
+接入 Buddy 与 SLUB 后，分别构建两种管理器配置。Best-Fit 配置开启 `SLUB_TEST=1`，课程评分仍为 20/20，同时通过 SLUB 八组测试。2026-10-21，我们在 GCC 15.1.0、QEMU 4.1.1 的本机环境中，对正式切换为 Best-Fit 的代码重新编译、启动并执行 `make grade`，得到相同评分结果，独立 SLUB 测试也通过。
 
 ![集成阶段 Best-Fit 评分20/20及SLUB测试汇总的日志回显](images/lab2-best-fit-grade-terminal.png)
 
@@ -1245,7 +1245,7 @@ Best-Fit 任务完成后，在 WSL 中执行编译、启动与评分，结果如
 | Buddy + SLUB | Buddy九组自检、SLUB八组测试通过 | 10/20，Page Init通过，Best-Fit管理器选择不匹配 |
 | Best-Fit + SLUB | Best-Fit自检、SLUB八组测试通过 | 20/20，退出码0 |
 
-两种配置都通过 SLUB 测试。Buddy 配置的10分差异来自课程评分对 Best-Fit 管理器选择的要求，最终源码保持 Best-Fit。随后胡楚骅本机以 GCC 15.1.0、QEMU 4.1.1 在临时副本中单独选择 Buddy，也通过 Buddy 九组及 SLUB 八组测试。
+两种配置都通过 SLUB 测试。Buddy 配置的10分差异来自课程评分对 Best-Fit 管理器选择的要求，最终源码保持 Best-Fit。随后，我们在 GCC 15.1.0、QEMU 4.1.1 的本机环境中，使用临时副本单独选择 Buddy，也通过 Buddy 九组及 SLUB 八组测试。
 
 ![两种配置编译结果的日志回显](images/lab2-build-terminal.png)
 
