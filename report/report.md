@@ -71,7 +71,7 @@ static void page_init(void);
 
 | 对象 | 含义 | 当前框架的关系 |
 |---|---|---|
-| VA | 内核使用的虚拟地址 | 直接映射区内 $\text{VA} = \text{PA} + \text{va\_pa\_offset}$ |
+| VA | 内核使用的虚拟地址 | 直接映射区内 `VA = PA + va_pa_offset` |
 | PA | 物理字节地址 | `PADDR(VA)` 从内核直接映射地址减去偏移 |
 | PPN | 绝对物理页号 | $\text{PA} \gg \text{PGSHIFT}$ |
 | `nbase` | DRAM 起始页号 | $0\text{x}80000000 / 4096 = 0\text{x}80000$ |
@@ -226,7 +226,7 @@ First-Fit 分配器首先在 `default_init()` 中初始化空闲块双向循环�
 
 **（2）分配连续物理页**
 
-`default_alloc_pages(n)` 首先断言 $n > 0$；若申请页数 $n > \text{nr\_free}$，直接返回 `NULL`。随后从 `free_list` 表头开始顺序遍历各空闲块首页，寻找第一个满足 `page->property >= n` 的块。
+`default_alloc_pages(n)` 首先断言 $n > 0$；若申请页数 `n > nr_free`，直接返回 `NULL`。随后从 `free_list` 表头开始顺序遍历各空闲块首页，寻找第一个满足 `page->property >= n` 的块。
 
 找到目标块后，先将其从链表中取下。若该块页数大于 $n$，则发生拆分：将跳过前 $n$ 页后的新起点 `page + n` 设为剩余空闲块的首页，写入剩余页数 `page->property - n` 并设置 `PG_property` 标志，再插回原链表位置。最后，将 `nr_free` 减去 $n$，清除所分配块首页 `page` 的 `PG_property` 标志并返回 `page`。若遍历完整个链表仍未找到足够大的块，则返回 `NULL`。
 
@@ -483,7 +483,9 @@ Best-Fit 每次挑选最接近请求大小的空闲块，避免了轻易拆散�
 
 释放时，调用者传入分配时的返回指针 `base` 和原始申请页数 $n$（如 `free_pages(p, 3)`）。函数校验 `base` 记录的原始请求页数与 $n$ 一致后，读出实际分配阶数 $k$，按 $2^k$ 页恢复空闲计数，并按以下公式计算伙伴块的首页物理页号：
 
-$$\text{buddy\_ppn} = \text{ppn} \oplus (1 \ll \text{order})$$
+```c
+buddy_ppn = ppn ^ (1 << order);
+```
 
 当且仅当该伙伴页号落在有效管理范围内、对应页面非保留、处于空闲状态（`PageProperty` 为真）且阶数同样为 $\text{order}$ 时，才将伙伴从链表摘下，取两者中的较低地址作为新首页，令 $\text{order} \leftarrow \text{order} + 1$，继续向更高阶尝试合并。需要注意的是，物理地址相邻的两个同阶块若不属于同一个 $2^{\text{order}+1}$ 对齐的父块，它们的页号异或结果并不匹配，绝不能合并。
 
@@ -830,7 +832,7 @@ void slub_free(void *ptr);
 大对象块：[首页头部，64字节][至少 size 字节用户区间][余量]
 ```
 
-因此单页实际对象容量为 $\left\lfloor (4096 - 64) / \text{object\_size} \right\rfloor$，即向下取整后的槽位数。空闲槽位利用自身前 8 字节存放单向链表 `next` 指针；槽位分配给调用者后，分配器不再读取其内部数据，调用者可以安全覆写整个请求区间。
+设槽位大小为 $s$（即 `object_size`），单页实际对象容量为 $\left\lfloor (4096 - 64) / s \right\rfloor$，即向下取整后的槽位数。空闲槽位利用自身前 8 字节存放单向链表 `next` 指针；槽位分配给调用者后，分配器不再读取其内部数据，调用者可以安全覆写整个请求区间。
 
 **（2）缓存状态流转与大对象处理**
 
