@@ -4220,7 +4220,7 @@ wyuwra@LAPTOP-UH4S14PJ:/mnt/c/Users/ASUS/Desktop/操
 
 **记录日期：** 2026-10-18
 
-本节独立记录成员二的提示词，不改变前文成员一的轮次和原始输入附录。以下保留本会话共同讨论确定的首轮完整提示词。成员二随后提供了 VS Code Codex 独立实现会话的完成回复；下文区分该会话反馈的运行结果与当轮直接完成的代码复核；后续补齐的截图与集成验证见本节末尾。
+以下保留共同讨论确定、交给 VS Code Codex 插件执行的首轮完整提示词。
 
 <a id="member2-best-fit-round1"></a>
 
@@ -4407,35 +4407,8 @@ Post-Condition：
 
 #### 执行结果
 
-**首轮结果来源：** 成员二转贴的 VS Code Codex 独立实现会话回复，以及当轮对工作区差异的只读复核。下表保留该轮反馈；后续截图和集成验证另列于本节末尾。
+首轮完成 Best-Fit 实现并接入内核，无追加修复。原有自检通过，`make grade` 中 Page Init 与 Best-Fit 均为 `OK`，得分 20/20。详细验证与截图见[实验报告第 5.2 节](report.md#best-fit-validation)。
 
-- **修改的文件及主要内容：**
-  - `lab2_new/kern/mm/best_fit_pmm.c`：实现初始化、有序空闲块插入、Best-Fit 选块、同大小选低地址、拆分、释放与前后合并、空闲页计数，定义 `best_fit_pmm_manager`，任务标记替换为 `2413276`。
-  - `lab2_new/kern/mm/pmm.c`：仅将 `init_pmm_manager()` 中的选择切换为 `&best_fit_pmm_manager`，队友的 `page_init()` 未变。
-- **编译或测试命令与反馈结果：**
-
-  | 命令 | 独立实现会话反馈的结果 |
-  |---|---|
-  | `make -j2` | 编译成功 |
-  | `make qemu` | 输出 `memory management: best_fit_pmm_manager` 和 `check_alloc_page() succeeded!`；内核进入循环后只结束本次测试进程 |
-  | `make grade` | Page Init、Best-Fit 均为 `OK`，总分 `20/20`，退出码为 0 |
-  | `git diff --check` | 通过 |
-
-  实现会话说明使用指定 RISC-V 工具链和 QEMU 4.1.1。
-
-- **本会话直接核对的结果：**
-  - Best-Fit 选择满足申请量的最小块；相同大小保留低地址块；恰好匹配时提前结束查找符合该规则。
-  - 拆分、释放、相邻合并和计数维护已实现；有序插入通过模块内部的 `best_insert_block()` 完成。
-  - 与 `HEAD` 基线比较，原有 `basic_check()`、`best_fit_check()` 所在代码保持逐字不变；`pmm.c` 的代码差异只有分配器选择一行。
-  - 本会话执行 `git diff --check` 通过，未重复运行构建或测试。
-- **发现的问题与下一步：**
-  - 截至本次反馈，首轮实现已报告通过，尚无失败反馈或追加修复提示词，不虚构实现迭代或 bug。
-  - 继续阅读生成代码，保存正常启动、自检与 `make grade` 的真实终端输出和必要截图，再补充正式报告的 Best-Fit 部分及改进问题。
-  - 手册任务二明确要求在实验报告中提交本任务使用的 prompt；`prompt.md` 保留完整过程，`report.md` 仍需呈现该提示词。参考：[任务二要求](http://oslab.mobisys.top/lab2026/_book/lab2/lab2_2_1_exercise.html)、[报告要求](http://oslab.mobisys.top/lab2026/_book/lab2/lab2_5_labs_requirement.html)。
-  - 当轮代码、报告和提示词修改尚未提交或推送。
-
-
-**后续完成情况：** 成员二已保存[正常启动截图](images/best-fit-boot.png)与[评分截图](images/best-fit-grade.png)，正式报告第 4.2.2 节已收录完整提示词、算法分析及改进回答。代码与对应材料已在后续提交中上传。集成后 Best-Fit 配置仍为 20/20，SLUB 八组测试通过；2026-10-21 胡楚骅本机以 GCC 15.1.0、QEMU 4.1.1 重新编译、启动和评分，也得到相同结果。详见[正式报告第 5.2 节](report.md#best-fit-validation)和[集成验证记录](evidence/final-20261021/results.json)。
 
 ## 十、SLUB：第一份实现提示词与接入（2026-10-21）
 
