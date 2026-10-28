@@ -1,8 +1,0 @@
-{
-  "result": "PASS",
-  "method": "Only a temporary copy omits descriptor list initialization; the real module-one code is unchanged.",
-  "mutation_detected_before_allocator": true,
-  "failed_run_replaced_stale_success": true,
-  "original_sources_unchanged": true,
-  "evidence": "checker-selftest/results.json and checker-selftest/verifier-output.log"
-}

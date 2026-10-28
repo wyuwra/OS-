@@ -1,3 +1,0 @@
-+ cc kern/mm/slub_test.c
-+ ld /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/kernel
-riscv64-unknown-elf-objcopy /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/kernel --strip-all -O binary /mnt/d/wsl-share/OS/tmp/slub-tests/test-bin/ucore.img
