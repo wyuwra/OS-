@@ -65,7 +65,9 @@
 __alltraps:
     SAVE_ALL
 
-    #lab3 function1 YOUR CODE
+    #lab3 function1 2413276
+    mv a0, sp
+    jal trap
     # sp should be the same as before "jal trap"
 
     .globl __trapret
