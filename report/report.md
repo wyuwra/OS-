@@ -84,41 +84,117 @@
 
 **需要实现/修改的汇编功能：**
 
-本模块在 `lab3_new/kern/trap/trapentry.S` 中补全 `__alltraps` 的 C 函数调用部分，以及 `RESTORE_ALL` 汇编宏。两者分别负责将已保存的 Trap frame 交给 C 语言处理函数，以及在处理结束后恢复执行现场。
+本模块补全 `lab3_new/kern/trap/trapentry.S` 中的 `__alltraps` 入口调用和 `RESTORE_ALL` 宏，分别完成向 C 处理函数传递 Trap frame，以及处理结束后的现场恢复。
 
 **功能说明：**
 
-Trap 进入 `__alltraps` 后，已有的 `SAVE_ALL` 将通用寄存器和相关 CSR 的值保存到当前栈上的 Trap frame。入口代码需要将该现场的地址传给 `void trap(struct trapframe *tf)`。C 函数完成中断或异常处理并返回后，执行流进入 `__trapret`，通过 `RESTORE_ALL` 恢复现场，最后执行已有的 `sret` 返回。
+Trap 进入 `__alltraps` 后，已有的 `SAVE_ALL` 在当前栈上保存通用寄存器及相关 CSR，形成与 `struct trapframe` 对应的现场记录。入口代码将其地址传入 `void trap(struct trapframe *tf)`，由模块二完成中断和异常的分类处理。函数返回后，执行流进入 `__trapret`，恢复现场并通过已有的 `sret` 返回。
 
-实现须与现有 `SAVE_ALL` 及 `struct trapframe` 的布局一致，保留其定义和 `trap()` 的函数签名。模块二负责具体的中断与异常处理，本模块负责入口调用及现场恢复。
+实现保留了 `SAVE_ALL`、Trap frame 布局和 C 函数接口。恢复过程使用处理函数修改后的最终现场，使返回地址的调整能够生效，同时保持上下文保存与恢复的一致性。
 
-#### 提示词记录
+#### 最终提示词
 
-入口调用部分已确认的四段式提示词见 [提示词记录](prompt.md)。`RESTORE_ALL` 的实现提示词尚未完成，因此目前尚无覆盖整个模块的最终成功提示词。
+本模块分两轮完成入口调用和现场恢复，两轮实际使用的提示词如下。完整回复与验证记录见 [prompt.md](prompt.md)。
 
-#### 实现过程与当前状态
+**第一轮：Trap 入口调用**
 
-##### 第一步：补全 Trap 入口中的 C 函数调用
+```text
+[PROMPT]
 
-当前已在 `SAVE_ALL` 后补入：
+任务：
 
-```asm
-    #lab3 function1 2413276
-    mv a0, sp
-    jal trap
+在 WSL 工程 `/home/sven1/course-project/os/OS-/lab3_new` 中，补全 `kern/trap/trapentry.S` 的 `__alltraps` 标签下、`SAVE_ALL` 之后的待填部分，完成向 C 函数 `trap()` 传递现场并调用的功能。
+
+操作要求：
+
+先检查分支、工作区和相关源码，保留已有修改。实际修改上述待填位置，将该处 `YOUR CODE` 替换为学号 `2413276`。不修改其他代码、报告和提示词记录，不提交或推送。
+
+输出与验收要求：
+
+解释新增指令，并使用现有构建入口进行必要验证。若其他未完成部分阻碍验证，如实说明，不擅自补写其他模块。
+
+[RELY]
+
+`SAVE_ALL` 已在栈上建立完整的 Trap frame，当前 `sp` 指向其起始地址，原来的通用寄存器值均已保存。现场布局由 `kern/trap/trap.h` 中的 `struct trapframe` 定义。
+
+C 函数接口为 `void trap(struct trapframe *tf)`。RISC-V 调用约定使用 `a0` 传递第一个参数，使用 `ra` 保存函数返回地址。待填部分之后已有 `__trapret`、`RESTORE_ALL` 和 `sret` 返回框架。
+
+[GUARANTEE]
+
+补全 `__alltraps` 中调用 `trap()` 的逻辑，正确传递现场地址并衔接返回流程。不改变已有接口、现场布局和 `SAVE_ALL`，不在本轮实现 `RESTORE_ALL`。
+
+[SPECIFICATION]
+
+功能：`__alltraps` 中调用 `trap()` 的部分。
+
+Pre-Condition：
+
+`SAVE_ALL` 已完成，`sp` 指向有效的 Trap frame，且满足调用约定的栈对齐要求。
+
+Post-Condition：
+
+`trap()` 接收的 `tf` 等于调用前的 `sp`；函数正常返回后，`sp` 与调用前一致，执行流继续进入 `__trapret`。
+
+Case 1（正常情况）：
+
+将当前现场地址作为第一个参数调用 `trap()`，处理结束后返回已有恢复流程。
+
+Requirements：
+
+正确建立函数返回地址，不破坏已保存的现场，不提前恢复旧 `sp`，保留 C 处理函数对 Trap frame 字段的合法修改。
 ```
 
-`SAVE_ALL` 执行后，`sp` 指向当前 Trap frame。`mv a0, sp` 按照 RISC-V 调用约定，将该地址放入第一个参数寄存器；`jal trap` 调用 C 处理函数，并将函数返回地址保存到 `ra`。函数正常返回后，执行流继续进入紧接着的 `__trapret`。
+**第二轮：RESTORE_ALL 现场恢复**
 
-`trap()` 的返回类型为 `void`，不需要接收返回值；处理函数通过指针访问或修改 Trap frame，后续恢复流程使用这份现场记录。
+```text
+[PROMPT]
+任务：
+在 WSL 工程 `/home/sven1/course-project/os/OS-/lab3_new` 中，补全 `kern/trap/trapentry.S` 的 `RESTORE_ALL` 汇编宏，使 Trap 处理完成后能够恢复现场，衔接已有的 `sret` 返回。
+操作要求：
+先检查分支、工作区和相关源码，保留已有修改。实际修改该宏的待填部分，将对应 `YOUR CODE` 替换为学号 `2413276`。不修改其他代码、报告和提示词记录，不提交或推送。
+输出与验收要求：
+解释恢复顺序及关键指令，使用现有构建和运行入口进行必要验证。若其他未完成部分阻碍验证，如实说明，不擅自补写其他模块，不将未验证的结果写成通过。
+[RELY]
+`SAVE_ALL` 已按 `struct trapframe` 的布局保存现场。RV64 下每个槽位为 8 字节，通用寄存器对应编号为 0～31 的槽位，旧 `sp` 位于槽位 2，`sstatus`、`sepc`、`sbadaddr` 和 `scause` 依次位于槽位 32～35。
+已有入口调用 `trap(tf)`，正常返回后进入 `__trapret`，执行 `RESTORE_ALL` 和 `sret`。`riscv.h` 提供 `LOAD` 和 `REGBYTES` 等宏，具体定义以当前源码为准。
+[GUARANTEE]
+实现与现有 `SAVE_ALL` 和 Trap frame 布局对应的 `RESTORE_ALL`。恢复返回所需的 CSR 和通用寄存器，不改变结构体、保存逻辑、已有入口调用及 `sret`。
+[SPECIFICATION]
+功能：`RESTORE_ALL`。
+Pre-Condition：
+`trap()` 已正常返回，当前 `sp` 指向有效的 Trap frame，其中字段为处理完成后应采用的最终现场。
+Post-Condition：
+`sstatus` 和 `sepc` 恢复为 Trap frame 中的对应值，除恒为零的 `x0` 外，通用寄存器恢复为对应字段的值，`sp` 恢复为保存的旧栈指针，随后可执行已有的 `sret`。
+Case 1（正常返回）：
+处理函数未调整返回现场时，恢复保存的寄存器与状态，使被打断的执行流能够继续。
+Case 2（处理函数调整现场）：
+处理函数修改了 `epc` 等字段时，恢复修改后的值，不擅自撤销调整，也不在恢复宏中额外增加返回地址偏移。
+Requirements：
+访问 CSR 时通过通用寄存器中转，先完成中转操作再恢复所借用寄存器的最终值。保持当前 `sp` 作为现场读取基准，最后恢复旧 `sp`。不必将用于诊断的 `cause` 和 `badvaddr` 写回 CSR，不额外开启中断或改变返回特权级。
+```
 
-**核对情况：** 已只读核对工作区中的上述两条指令及学号标记。该核对不等于编译或运行验证，目前没有在本报告中记录该入口调用的编译、运行通过结果，也没有已核实的实现故障或修复迭代可供填写。
+#### 实现迭代过程
 
-##### 第二步：补全现场恢复
+本模块按两项子任务分两轮实现，第二轮补全现场恢复，并非对第一轮入口代码的返工。提示词均采用四段式结构：在 `[PROMPT]` 中限定任务与修改范围，在 `[RELY]` 中给出已有布局和接口，在 `[GUARANTEE]` 中明确交付内容，再通过 `[SPECIFICATION]` 约束调用前后的状态及恢复行为。
 
-`RESTORE_ALL` 仍为待实现状态。后续需从 Trap frame 恢复 `sstatus`、`sepc` 和通用寄存器，并在其他依赖当前栈指针的读取完成后恢复旧 `sp`，衔接已有的 `sret`。
+##### 第一次迭代：Trap 入口调用
 
-**当前结论：** 模块一仅完成入口调用部分，尚未完成现场恢复及模块验证，不能表述为整个模块已完成或完整 Trap 流程已通过。
+在 `SAVE_ALL` 后增加以下两条指令：
+
+```asm
+mv a0, sp
+jal trap
+```
+
+此时 `sp` 指向已保存的 Trap frame。`mv a0, sp` 按调用约定传递第一个参数，`jal trap` 保存函数返回地址并进入 C 处理函数。函数正常返回后，栈指针保持调用前的值，执行流顺接 `__trapret`。`trap()` 的返回类型为 `void`，处理结果通过现场记录中的字段体现，无须另行接收返回值。
+
+##### 第二次迭代：现场恢复
+
+`RESTORE_ALL` 首先将槽位 32、33 的值读入 `s0`、`s1`，再写回 `sstatus`、`sepc`；随后从对应槽位恢复 `x1`、`x3` 至 `x31`，其中也包括借作中转的 `s0(x8)`、`s1(x9)`。最后从槽位 2 恢复旧 `sp`，保证此前的所有读取均使用正确的现场基址。`x0` 恒为零，无须恢复，诊断用途的 `cause` 和 `badvaddr` 也不回写 CSR。
+
+该宏直接采用 Trap frame 中的最终值，不额外调整 `epc`、开启中断或改变返回特权级，返回动作由已有的 `sret` 完成。两处任务标记均已填写学号 `2413276`。
+
+两项代码均已补全。实现会话记录显示，构建仍受到模块二处理函数未声明及原有 `sbadaddr` 名称不被汇编器识别的阻碍，尚未完成编译和运行验证；具体命令与错误记录保留在 `prompt.md` 中。
 
 ---
 
