@@ -7,3 +7,10 @@
 
 # Original course archive
 /lab2.zip
+
+# Lab3 local build outputs
+/lab3_new/bin/
+/lab3_new/obj/
+/lab3_new/.gdb_history
+/lab3_new/.qemu.out
+/lab3_new/.gdb.in
