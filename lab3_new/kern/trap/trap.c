@@ -9,8 +9,10 @@
 #include <stdio.h>
 #include <trap.h>
 
+/* TICK_NUM - 每打印一次 "ticks" 信息对应的时钟中断次数 */
 #define TICK_NUM 100
 
+/* print_ticks - 打印时钟节拍信息；开启 DEBUG_GRADE 时输出结束标记并 panic 退出评测 */
 static void print_ticks() {
     cprintf("%d ticks\n", TICK_NUM);
 #ifdef DEBUG_GRADE
@@ -19,23 +21,26 @@ static void print_ticks() {
 #endif
 }
 
-/* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S
- */
+/* idt_init - 初始化陷入向量：将 stvec 指向汇编入口 __alltraps
+ * 同时把 sscratch 清零，告诉入口代码当前正在内核态执行。 */
 void idt_init(void) {
 
     extern void __alltraps(void);
     /* Set sup0 scratch register to 0, indicating to exception vector
        that we are presently executing in the kernel */
+    /* 清零 sscratch：0 表示当前位于内核态 */
     write_csr(sscratch, 0);
     /* Set the exception vector address */
+    /* 设置陷入向量基址，之后所有中断/异常都会跳到 __alltraps */
     write_csr(stvec, &__alltraps);
 }
 
-/* trap_in_kernel - test if trap happened in kernel */
+/* trap_in_kernel - 判断陷入发生时是否处于内核态（sstatus.SPP 为 1 表示陷入前为 S 态） */
 bool trap_in_kernel(struct trapframe *tf) {
     return (tf->status & SSTATUS_SPP) != 0;
 }
 
+/* print_trapframe - 打印陷入现场：trapframe 地址、通用寄存器及 status/epc/badvaddr/cause */
 void print_trapframe(struct trapframe *tf) {
     cprintf("trapframe at %p\n", tf);
     print_regs(&tf->gpr);
@@ -45,6 +50,7 @@ void print_trapframe(struct trapframe *tf) {
     cprintf("  cause    0x%08x\n", tf->cause);
 }
 
+/* print_regs - 逐个打印保存在 pushregs 中的通用寄存器值 */
 void print_regs(struct pushregs *gpr) {
     cprintf("  zero     0x%08x\n", gpr->zero);
     cprintf("  ra       0x%08x\n", gpr->ra);
@@ -81,8 +87,10 @@ void print_regs(struct pushregs *gpr) {
 }
 
 //lab3 function2 YOUR CODE
+// 待实现：interrupt_handler() 与 exception_handler() 目前未定义，需在此补全
 
 
+/* trap_dispatch - 根据 scause 的最高位分派：负数（最高位为 1）为中断，否则为异常 */
 static inline void trap_dispatch(struct trapframe *tf) {
     if ((intptr_t)tf->cause < 0) {
         // interrupts
@@ -101,5 +109,6 @@ static inline void trap_dispatch(struct trapframe *tf) {
  * */
 void trap(struct trapframe *tf) {
     // dispatch based on what type of trap occurred
+    // 由 __alltraps 汇编入口调用，tf 指向刚保存好的 trapframe
     trap_dispatch(tf);
 }
