@@ -1,6 +1,123 @@
 # Lab3 提示词记录
 
-本文汇总小组三位成员在 Lab3 中实际使用的提示词及对应的 AI 回复，按成员、任务和轮次记录。各轮记录保留当时的实现与验证情况。
+本文按成员、任务和轮次汇总 Lab3 提示词及对应结果，分别标注实际发送的输入与事后规范化整理的版本，保留各阶段的实现与验证情况。
+
+## 王雅枫（2412832）—Lab2 物理页初始化迁移
+
+### 提示词（规范化整理）
+
+以下内容原样收录自 [提示词_wyf.md](提示词_wyf.md)，为物理页初始化迁移任务的四段式规范化整理版本。
+
+```text
+[PROMPT]
+任务：将 Lab2 中已实现的物理页初始化功能迁移到 Lab3。
+
+功能目标：复用 Lab2 的 page_init()，根据设备树提供的物理内存信息，
+建立 Page 描述符数组，保留固件、内核和描述符数组占用的页面，
+并将剩余完整页面注册到当前物理内存管理器。
+
+修改范围：
+- 在 lab3_new/kern/mm/pmm.c 的 Lab2 预留位置补入 page_init()。
+- 允许在 lab3_new/kern/mm/memlayout.h 中补充必要的地址宏。
+- 保留 Lab3 的中断保护、原子位操作、现有接口和管理器选择。
+- Best-Fit 由其他成员负责，本次不迁移该分配器。
+- 保留任务注释和学号 2412832。
+
+操作要求：先对比两个实验的接口和内存布局，再迁移实际代码。
+完成后检查差异并编译相关文件，说明验证结果和未验证部分。
+
+
+[RELY]
+依据当前工程中的真实定义：
+
+1. 迁移来源：
+   lab2 分支中的 lab2_new/kern/mm/pmm.c。
+
+2. 设备树接口：
+   uint64_t get_memory_base(void);
+   uint64_t get_memory_size(void);
+   kern_init() 已在 pmm_init() 之前调用 dtb_init()。
+
+3. 地址及页面相关定义：
+   KERNBASE、KERNTOP、PHYSICAL_MEMORY_OFFSET、
+   DRAM_BASE、PGSIZE、PPN、ROUNDUP、ROUNDDOWN 和 PADDR。
+
+   Lab3 尚未定义旧实现依赖的：
+   KERNEL_BEGIN_PADDR、PHYSICAL_MEMORY_END。
+   应根据当前虚拟地址布局和虚实偏移补齐。
+
+4. 数据结构和接口：
+   struct Page 包含 ref、flags、property 和 page_link。
+   可使用 set_page_ref()、SetPageReserved()、list_init()、
+   pa2page()、init_memmap()、panic() 和 cprintf()。
+
+5. 全局变量含义：
+   va_pa_offset：内核直接映射的虚拟地址减物理地址。
+   pages：Page 描述符数组的虚拟地址。
+   nbase：DRAM 起始物理页号。
+   npage：可管理物理页号的排他上界，
+          描述符数量为 npage - nbase。
+
+6. Lab3 的 alloc_pages()、free_pages() 和 nr_free_pages()
+   已包含 local_intr_save()/local_intr_restore()，需要保留。
+
+
+[GUARANTEE]
+必须迁移的函数：
+static void page_init(void);
+
+必要的配套修改：
+补齐 KERNEL_BEGIN_PADDR 和 PHYSICAL_MEMORY_END 的定义，
+使其与当前 KERNBASE、KERNTOP 和 PHYSICAL_MEMORY_OFFSET 一致。
+
+辅助函数要求：
+优先复用已有接口，本任务不需要新增对外接口。
+
+
+[SPECIFICATION]
+函数：page_init()
+
+Pre-Condition（前置条件）：
+- 设备树初始化流程已经执行，但仍需校验读取到的内存信息。
+- 当前物理内存管理器已完成 init()。
+- 启动页表已建立内核直接映射。
+- 链接符号 end 表示当前内核镜像的结束位置。
+
+Post-Condition（后置条件）：
+- 正确设置 va_pa_offset、npage 和 pages。
+- 描述符数组位于内核镜像之后，且完全落在可管理内存内。
+- 描述符初始化时具有确定的引用计数、标志、property 和链表状态。
+- 固件、内核、描述符数组及不足一页的边界空间不进入空闲区。
+- 合法的完整空闲页通过 init_memmap() 注册给当前管理器。
+
+Case 1（正常情况）：
+- 内存信息合法且空间充足。
+- 根据当前内核 end 动态计算描述符位置和空闲页范围。
+- 输出探测范围、管理上界、描述符位置和空闲页数量。
+
+Case 2（异常与边界情况）：
+- 内存信息为空、地址运算溢出、内存无法覆盖内核、
+  描述符空间不足或没有完整空闲页时，通过 panic() 终止。
+- 所有容量和溢出检查必须先于描述符数组写入。
+- 不得以零页面数量调用 init_memmap()。
+
+Requirements（其他约束）：
+- 在首次使用 PADDR() 前设置 va_pa_offset。
+- 正确区分虚拟地址、物理地址、物理页号和描述符地址。
+- 管理上界向下按页对齐，空闲起点向上按页对齐。
+- 保留 Lab2 实现已有的安全检查。
+- 使用 Lab3 编译参数验证 pmm.c。
+- 若其他未完成模块妨碍整体编译或运行，应明确说明，
+  不得把单文件编译成功描述为整个 Lab3 测试通过。
+```
+
+### 对应实现结果
+
+- `lab3_new/kern/mm/pmm.c`：迁入 Lab2 的 `page_init()`，保留学号 `2412832` 和 Lab3 的中断保护接口。
+- `lab3_new/kern/mm/memlayout.h`：根据直接映射关系补充 `KERNEL_BEGIN_PADDR` 和 `PHYSICAL_MEMORY_END`。
+- 验证结果：`pmm.c` 使用 Lab3 编译参数完成单文件编译；当时保留框架的管理器选择，由队友后续接入 Best-Fit。
+
+---
 
 ## 胡楚骅（2413276）—模块一第 1 轮：Trap 入口调用
 
@@ -127,24 +244,6 @@ Requirements：
 
 ## 罗元伟（2412737）—模块二：中断与异常处理
 
-本模块使用 Claude Code（Claude Opus 5.5）完成。按 `report/提示词模板.md` 的要求，先保留实际发送的原始提示词；之后的分轮四段式提示词是事后按模板整理的“规范化练习”，用于展示本模块的提示词设计思路，各轮下方的执行结果均为本次实际发生的情况。
-
-### 实际发送的提示词
-
-```text
-现在由更换职责，王雅枫来负责报告整理，我完成模块2的异常和中断处理代码，你现在直接完成并推送。建议分两次推送。实现说明放到仓库里。
-记得加中文注释。
-```
-
-### 执行结果
-
-- 修改的文件及主要内容：`lab3_new/kern/trap/trap.c` 实现 `interrupt_handler()`、`exception_handler()`，新增辅助函数 `trap_insn_len()`、宏 `SHUTDOWN_AFTER` 与计数变量 `num_prints`，加入 `#include <sbi.h>`；`.gitignore` 忽略 `lab3_new` 构建产物；新增 `report/模块二实现说明_lyw.md` 与两张运行截图。
-- 编译或测试命令：`make`、`make qemu`、`make grade`。
-- 实际结果：`make` 通过；系统自带 QEMU 8.2.2 下 `make qemu` 未启动内核，改用 QEMU 4.1.1 后输出 10 行 `100 ticks` 并自动关机；`make grade` 100/100。
-- 发现的问题与下一步：`SHUTDOWN_AFTER` 的注释最初写成“按指导书要求取 10”，与指导书不符，推送前修正为“框架和指导书都没有给出具体数值”。代码与说明分两次推送到 `lab3` 分支。
-
----
-
 ### 规范化练习 第 1 轮：只读分析，确认接口与验收标准
 
 设计思路：模块二要和模块一的 Trap 返回流程、时钟驱动和评测脚本同时衔接。先让 AI 只读不写，把真实接口、评测检查项和框架缺失项列出来，后续提示词的 `[RELY]` 就能完全基于源码，而不是基于 AI 的猜测。
@@ -170,7 +269,7 @@ Requirements：
 
 ---
 
-### 规范化练习 第 2 轮：四段式提示词，实现两个处理函数（最终提示词）
+### 规范化练习 第 2 轮：四段式提示词，实现两个处理函数
 
 设计思路：把第 1 轮的结论写入 `[RELY]`；在 `[SPECIFICATION]` 中按“时钟中断 / 其他中断 / 规定异常 / 其他异常”分 Case 描述行为，重点约束三处容易出错的地方：时钟必须重设、`epc` 按指令长度推进、不得改动规定以外的函数。
 
