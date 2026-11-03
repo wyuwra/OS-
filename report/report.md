@@ -184,6 +184,23 @@ jal trap
 
 `RESTORE_ALL` 先把槽位 32、33 读入 `s0`、`s1`，再分别写回 `sstatus` 和 `sepc`。接着恢复通用寄存器，包括刚才作为中转使用的 `s0`、`s1`，最后恢复槽位 2 中的旧 `sp`。
 
+关键实现如下，省略了其他通用寄存器的重复加载指令：
+
+```asm
+# 通过临时寄存器恢复返回所需的 CSR
+LOAD s0, 32*REGBYTES(sp)
+LOAD s1, 33*REGBYTES(sp)
+csrw sstatus, s0
+csrw sepc, s1
+
+# 此处省略 x1、x3～x7 的恢复
+LOAD x8, 8*REGBYTES(sp)    # 恢复 s0 自身保存的值
+LOAD x9, 9*REGBYTES(sp)    # 恢复 s1 自身保存的值
+# 此处省略 x10～x31 的恢复
+
+LOAD x2, 2*REGBYTES(sp)    # 最后恢复原 sp
+```
+
 这里有两个顺序约束：
 
 - `s0`、`s1` 先用作 CSR 的中转，等中转完成后再恢复它们自己的最终值。
