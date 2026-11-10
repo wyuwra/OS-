@@ -1,16 +1,6 @@
-# Lab2 local build outputs
-/lab2_new/bin/
-/lab2_new/obj/
-/lab2_new/.gdb_history
-/lab2_new/.qemu.out
-/lab2_new/.gdb.in
-
-# Original course archive
-/lab2.zip
-
-# Lab3 local build outputs
-/lab3_new/bin/
-/lab3_new/obj/
-/lab3_new/.gdb_history
-/lab3_new/.qemu.out
-/lab3_new/.gdb.in
+﻿/code/bin/
+/code/obj/
+/code/.gdb_history
+/code/.gdb.in
+/code/.qemu*.out
+/lab4.zip
