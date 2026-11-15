@@ -738,3 +738,75 @@ Requirements（其他约束）：
 - 编译命令：`make`。`switch.S` 编译通过；链接仍因缺少 `cpu_idle` 失败，符合当前进度。
 - 检查结果：`riscv64-unknown-elf-objdump -d obj/kern/process/switch.o` 显示保存偏移为 0~104、恢复偏移相同；在工作区临时目录编译 `_Static_assert` 检查 `sizeof(struct context) == 14 * REGBYTES` 以及 `ra`、`sp`、`s0`、`s11` 偏移，输出 `CONTEXT_LAYOUT_OK`。
 - 后续步骤：实现 `proc_run()`。
+
+## 模块三——切换运行线程 proc_run()
+
+### 规范化提示词
+
+```text
+[PROMPT]
+任务：在 code/kern/process/proc.c 的 LAB4 function3 区域实现 proc_run()。
+
+功能目标：让指定线程成为当前运行线程：更新 current，
+把 satp 切换到该线程的页表，再调用 switch_to() 完成寄存器现场切换。
+
+修改范围：
+- 只在 proc.c 的模块三预留位置新增 proc_run()，将 YOUR CODE 替换为 2412737。
+- 不修改模块二的 alloc_proc()、do_fork()、copy_thread() 等函数。
+- 不实现 schedule() 和 cpu_idle()，它们在下一轮完成。
+
+操作要求：阅读 sync.h、riscv.h 中 satp 相关宏、pmm.c 的 enable_paging()
+和 pmm.h 的 flush_tlb()，确认 Sv39 下 satp 的正确构造方式后再修改代码。
+
+验收方式：make 编译 proc.c 无错误；在临时工程副本中临时提供一个
+直接调用 proc_run(initproc) 的 cpu_idle()，运行 QEMU，检查切换后
+current == initproc、satp 值正确，且 init_main() 的输出完整出现。
+
+[RELY]
+- struct proc_struct：context（switch_to 使用）、pgdir（根页表物理地址）。
+- 全局变量：struct proc_struct *current，初始为 idleproc。
+- sync.h：local_intr_save(x) 在 SIE = 1 时关中断并令 x = 1，否则 x = 0；
+  local_intr_restore(x) 仅在 x = 1 时重新开中断，因此可以嵌套。
+- riscv.h：write_csr(reg, val)、SATP_MODE_SV39 = 8、RISCV_PGSHIFT = 12；
+  lsatp() 按 Sv32 构造 satp，本实验不可用。
+- pmm.c：enable_paging() 写 satp 的方式为 0x8000000000000000 | (pa >> RISCV_PGSHIFT)。
+- pmm.h：static inline void flush_tlb() 执行 sfence.vma。
+- switch.S：void switch_to(struct context *from, struct context *to);
+
+[GUARANTEE]
+void proc_run(struct proc_struct *proc);
+（声明已存在于 proc.h，不新增辅助函数。）
+
+[SPECIFICATION]
+函数：proc_run()
+
+Pre-Condition（前置条件）：
+- proc 指向已登记、状态为 PROC_RUNNABLE 的线程，其 context 和 pgdir 有效。
+- current 指向当前正在 CPU 上运行的线程。
+
+Post-Condition（后置条件）：
+- 对于新线程：current == proc，satp 指向 proc->pgdir，CPU 执行流转到 proc。
+- 对于旧线程：之后被切回时从 switch_to() 返回，并恢复进入 proc_run() 前的中断状态。
+
+Case 1（proc 与 current 不同）：
+- 关中断后依次更新 current、写 satp、刷新 TLB、调用 switch_to(&prev->context, &next->context)。
+
+Case 2（proc == current）：
+- 不做任何切换，直接返回，不修改 satp 和 context。
+
+Requirements（其他约束）：
+- 更新 current、satp 和执行现场期间必须关中断，结束后用 local_intr_restore() 恢复原状态。
+- satp 使用 SATP_MODE_SV39 << 60 与 pgdir >> RISCV_PGSHIFT 构造，不使用 lsatp()。
+- current 必须在 switch_to() 之前更新：新线程首次运行时 forkret() 会读取 current->tf。
+- 不修改线程状态、runs 和 need_resched，这些由 schedule() 负责。
+```
+
+### 执行结果
+
+- 修改文件：`code/kern/process/proc.c`，模块三区域注释改为 `//LAB4 function3 2412737`，新增 `proc_run()`。
+- 实现内容：`proc != current` 时关中断，依次更新 `current`、按 Sv39 格式写 `satp`、调用 `flush_tlb()`、执行 `switch_to()`，返回后恢复中断状态；相同线程直接返回。
+- 编译命令：`make`。`proc.c` 编译通过，链接仍只缺少 `cpu_idle`。
+- 验证方式：复制工程到工作区临时目录，临时提供 `cpu_idle()` 直接调用 `proc_run(initproc)`，并在 `init_main()` 开头断言 `current == initproc` 且 `satp == (8 << 60) | (boot_pgdir_pa >> 12)`。
+- 实际结果：QEMU 输出 `PROC_RUN TEST: current=0 -> initproc=1, satp=0x8000000000080208`、`PROC_RUN CHECK PASSED`，随后出现 `this initproc, pid = 1, name = "init"` 和两行 `To U:` 输出，最后由框架中未实现的 `do_exit()` 触发 `process exit!!` panic，属于 Lab4 预期行为。说明 `switch_to -> forkret -> forkrets -> __trapret -> kernel_thread_entry` 链路已打通。
+- 发现的问题：全量编译时 `kern/mm/kmalloc.c:92` 报 `-Wint-conversion` 警告，来自起始代码，不在本任务修改范围内，保持不动。
+- 后续步骤：实现 `schedule()` 和 `cpu_idle()`，运行完整 `make qemu` 与 `make grade`。

@@ -417,4 +417,31 @@ proc_init(void)
     // 此时 current 仍为 idleproc，initproc 已就绪，等待后续 schedule() 选中。
 }
 
-//LAB4 function3 YOUR CODE
+//LAB4 function3 2412737
+// proc_run - 让 proc 成为当前运行线程：切换 current、页表和寄存器上下文
+void
+proc_run(struct proc_struct *proc)
+{
+    // 目标就是当前线程时无需切换，避免把自己的 context 保存后再原样恢复。
+    if (proc != current)
+    {
+        struct proc_struct *prev = current, *next = proc;
+        bool intr_flag;
+        // 更新 current、satp 和执行现场必须是一个整体：
+        // 若中间被时钟中断打断，current 与实际运行的栈/页表可能不一致。
+        local_intr_save(intr_flag);
+        {
+            current = next;
+            // Sv39：satp = MODE(8) << 60 | 根页表物理页号；pgdir 保存的是物理地址。
+            // 不能使用 libs/riscv.h 中的 lsatp()，它只按 Sv32 格式写 satp。
+            write_csr(satp, ((uintptr_t)SATP_MODE_SV39 << 60) | (next->pgdir >> RISCV_PGSHIFT));
+            // 切换根页表后刷新 TLB，避免继续使用旧地址空间的翻译结果。
+            flush_tlb();
+            // 保存 prev 的 ra/sp/s0~s11，恢复 next 的现场。
+            // 返回到这里时，说明 prev 又被调度回来了，此时 current == prev。
+            switch_to(&(prev->context), &(next->context));
+        }
+        // 恢复的是 prev 当初保存的中断状态（intr_flag 位于 prev 的栈上）。
+        local_intr_restore(intr_flag);
+    }
+}
