@@ -897,3 +897,29 @@ Requirements（其他约束）：
 - 编译命令：`make clean && make`。链接成功，生成 `bin/kernel` 和 `bin/ucore.img`；仅有起始代码 `kmalloc.c:92` 的既有警告。
 - `make qemu`：输出 `this initproc, pid = 1, name = "init"`、`To U: "Hello world!!".`、`To U: "en.., Bye, Bye. :)"`，随后进入框架预期的 `process exit!!` panic。
 - `make grade`：评分结果见下一节“整体验证与问题记录”。
+
+## 模块三——整体验证与问题记录
+
+### 实际结果
+
+- 正式工程 `code/` 中执行 `make clean && make`、`make qemu`，三行 initproc 输出全部出现，最后进入 Lab4 预期的 `process exit!!` panic。
+
+![make qemu 运行结果](./images/lab4_make_qemu.png)
+
+- 正式工程中直接执行 `make grade`，三项检查都显示 `no $qemu_out`，总分 0/30。
+
+![原始 make grade 因 GDB 端口不可用而无输出](./images/lab4_make_grade_port_conflict.png)
+
+- 在工作区临时副本中按 `make grade` 的步骤打包工程并执行 `tools/inject.py`，只在副本的 `tools/grade.sh` 中调整 GDB 端口与架构设置后运行评分脚本，三项检查全部 OK，总分 30/30，`.qemu.out` 中出现 `[Test PMM] PASS`、`[Test Process Create] PASS`、`[Test Schedule] PASS`。
+
+![临时副本中评分 30/30](./images/lab4_make_grade.png)
+
+### 问题与解决
+
+1. `make grade` 输出 `no $qemu_out`。
+   - 排查：手动按 `grade.sh` 的参数启动 QEMU，错误输出为 `-gdb tcp::1234: Failed to find an available port: Address already in use`；Linux 内没有进程监听 1234。本机 WSL 使用 `networkingMode=mirrored`，Windows 的 `netsh interface ipv4 show excludedportrange protocol=tcp` 显示 1199~1298 为系统保留端口段，1234 落在其中。
+   - 处理：属于本机环境问题，与调度代码无关。仓库中的 `tools/grade.sh` 保持不变，只在临时副本中把 `gdbport` 改为 26000。
+2. 更换端口后 GDB 报 `Truncated register 37 in remote 'g' packet`。
+   - 排查：`riscv64-unknown-elf-gdb` 是指向 `gdb-multiarch` 15.1 的链接；评分脚本不加载 ELF，GDB 拒绝 QEMU 4.1.1 提供的目标描述，无法确定架构。
+   - 处理：在临时副本生成的 `.gdb.in` 首行加入 `set architecture riscv:rv64`，评分随即通过。若组内需要在本机直接运行 `make grade`，可在管理员终端执行 `net stop winnat` 和 `net start winnat` 释放保留端口，或统一修改评分脚本，需组内确认后再改。
+3. 全量编译时出现 `kern/mm/kmalloc.c:92` 的 `-Wint-conversion` 警告；评分时 `test_lab4.c` 也会因测试线程函数返回 `void` 产生类型提示。两者分别来自起始代码和课程测试文件，不影响结果，未修改。
