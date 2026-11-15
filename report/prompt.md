@@ -810,3 +810,90 @@ Requirements（其他约束）：
 - 实际结果：QEMU 输出 `PROC_RUN TEST: current=0 -> initproc=1, satp=0x8000000000080208`、`PROC_RUN CHECK PASSED`，随后出现 `this initproc, pid = 1, name = "init"` 和两行 `To U:` 输出，最后由框架中未实现的 `do_exit()` 触发 `process exit!!` panic，属于 Lab4 预期行为。说明 `switch_to -> forkret -> forkrets -> __trapret -> kernel_thread_entry` 链路已打通。
 - 发现的问题：全量编译时 `kern/mm/kmalloc.c:92` 报 `-Wint-conversion` 警告，来自起始代码，不在本任务修改范围内，保持不动。
 - 后续步骤：实现 `schedule()` 和 `cpu_idle()`，运行完整 `make qemu` 与 `make grade`。
+
+## 模块三——调度选择与空闲循环 schedule()、cpu_idle()
+
+### 规范化提示词
+
+```text
+[PROMPT]
+任务：在 code/kern/schedule/sched.c 中实现 schedule()，
+在 code/kern/process/proc.c 的模块三区域（proc_run() 之后）实现 cpu_idle()。
+
+功能目标：cpu_idle() 作为 idleproc 的执行主体持续循环，发现 need_resched 时调用 schedule()；
+schedule() 按 FIFO/轮转方式从 proc_list 中选出下一个 PROC_RUNNABLE 线程，
+找不到时退回 idleproc，最后通过 proc_run() 完成切换。
+
+修改范围：
+- sched.c：将 LAB4 function3 的 YOUR CODE 替换为 2412737，在其下实现 schedule()。
+- proc.c：在 proc_run() 之后新增 cpu_idle()。
+- 不修改 wakeup_proc()、sched.h、proc.h 的声明，不修改 tools/ 下的测试和评分脚本。
+
+操作要求：阅读 list.h、proc_init()、do_fork() 中链表的登记方式和
+tools/test_lab4.c 中的 test_lab4_schedule()，确认 idleproc 是否在 proc_list 中、
+测试线程如何触发调度，再修改代码并添加中文注释。
+
+验收方式：make 编译无错误；make qemu 输出 initproc 的三行字符串；
+make grade 三项检查全部通过（Total Score: 30/30）。
+
+[RELY]
+- list.h：list_next(le) 返回下一个节点；proc_list 是带哨兵头结点的双向循环链表。
+- proc.h：le2proc(le, list_link) 由链表节点得到 proc_struct；PROC_RUNNABLE 表示就绪或运行中。
+- proc_init()：idleproc 状态为 PROC_RUNNABLE、need_resched = 1，未加入 proc_list。
+- do_fork()：list_add(&proc_list, &proc->list_link) 把新线程插入头结点之后，再 wakeup_proc()。
+- proc.c：void proc_run(struct proc_struct *proc); 已实现，内部自行关中断并处理 proc == current。
+- sync.h：local_intr_save()/local_intr_restore() 可嵌套。
+- test_lab4_schedule()：在 init_main 入口创建两个测试线程，initproc 和测试线程
+  反复设置 current->need_resched = 1 并直接调用 schedule()，要求两个测试线程都运行过。
+
+[GUARANTEE]
+void schedule(void);                          (声明在 sched.h)
+void cpu_idle(void) __attribute__((noreturn)); (声明在 proc.h)
+不新增辅助函数。
+
+[SPECIFICATION]
+函数：schedule()
+
+Pre-Condition（前置条件）：
+- current 指向当前运行线程，proc_list 已初始化，idleproc 有效。
+
+Post-Condition（后置条件）：
+- current->need_resched 被清零。
+- 选中的线程 runs 加 1；若它不是 current，则已通过 proc_run() 切换过去。
+- 当前线程以后被切回时从 schedule() 返回，并恢复进入时的中断状态。
+
+Case 1（current 是 idleproc）：
+- 从 proc_list 头结点之后开始查找第一个 PROC_RUNNABLE 线程。
+
+Case 2（current 是普通线程）：
+- 从 current->list_link 的下一个节点开始查找，绕链表一圈（包括 current 自身）为止，
+  使多个就绪线程轮流获得 CPU。
+
+Case 3（没有就绪线程）：
+- 选择 idleproc；若 current 已是 idleproc，则不切换。
+
+Requirements（其他约束）：
+- 遍历时跳过 proc_list 头结点，不能对哨兵节点使用 le2proc()。
+- 选择与切换全程关中断，结束后恢复原中断状态。
+- 不修改线程状态，不在 schedule() 中创建或回收线程。
+
+函数：cpu_idle()
+
+Pre-Condition（前置条件）：
+- kern_init() 已完成 proc_init()、clock_init() 和 intr_enable()，current == idleproc。
+
+Post-Condition（后置条件）：
+- 函数永不返回；每当 current->need_resched 为真时调用一次 schedule()。
+
+Requirements（其他约束）：
+- 循环中每次重新读取 current->need_resched（该字段为 volatile）。
+- 不在 cpu_idle() 中直接选择线程或调用 proc_run()，调度决策统一交给 schedule()。
+```
+
+### 执行结果
+
+- 修改文件：`code/kern/schedule/sched.c` 新增 `schedule()`，注释改为 `//LAB4 function3 2412737`；`code/kern/process/proc.c` 在 `proc_run()` 之后新增 `cpu_idle()`。
+- 实现内容：`schedule()` 关中断后清 `need_resched`，按 `current` 是否为 idleproc 决定查找起点，绕链表一圈查找 `PROC_RUNNABLE`，找不到时退回 idleproc，`runs++` 后在需要时调用 `proc_run()`；`cpu_idle()` 循环检查 `need_resched`。
+- 编译命令：`make clean && make`。链接成功，生成 `bin/kernel` 和 `bin/ucore.img`；仅有起始代码 `kmalloc.c:92` 的既有警告。
+- `make qemu`：输出 `this initproc, pid = 1, name = "init"`、`To U: "Hello world!!".`、`To U: "en.., Bye, Bye. :)"`，随后进入框架预期的 `process exit!!` panic。
+- `make grade`：评分结果见下一节“整体验证与问题记录”。

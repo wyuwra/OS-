@@ -445,3 +445,19 @@ proc_run(struct proc_struct *proc)
         local_intr_restore(intr_flag);
     }
 }
+
+// cpu_idle - idleproc 的执行主体：内核初始化完成后在此空转，
+// 一旦发现需要重新调度，就调用 schedule() 把 CPU 让给其他就绪线程。
+void
+cpu_idle(void)
+{
+    while (1)
+    {
+        // proc_init() 已将 idleproc->need_resched 置 1，首次进入即触发调度。
+        // 之后若没有其他就绪线程，schedule() 会选回 idleproc，继续在此等待。
+        if (current->need_resched)
+        {
+            schedule();
+        }
+    }
+}
