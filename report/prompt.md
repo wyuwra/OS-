@@ -596,3 +596,145 @@ Requirements（其他约束）：
 - 首次执行：临时测试通过 initproc 的恢复入口进入 `init_main()`，得到 PID 为 1、名称为 init，以及 `Hello world!!` 和结束语输出；测试副本临时替换 `do_exit()`，检查函数返回值为 0 后输出 `PROC_INIT ENTRY PASSED` 并关闭 QEMU。正式工程的退出接口保持不变。
 - 日志位置：对应 WSL 临时目录中的 `build.log` 和 `qemu.log`。
 - 后续步骤：模块二六个函数已补齐，等待模块三接入后运行完整 `make qemu`、`make grade`，检查调度与上下文切换。
+
+## 模块三——任务说明与工作方向
+
+### 实际发送的提示词
+
+```text
+1. 到实验平台读取lab4的内容到class/exp，为markdown格式 /markdown-format-skill
+2. 我本次工作内容是任务3,我的队友已完成任务1和2,你需要是实现任务3的内容
+3. 根据提示词模板准备我的提示词和工作文档（这个提示词是一个任务，建议你先细化内容和工作方向，并把这些作为我给你的提示词填入文档；工作文档用于我后续复盘）
+以上工作完成并检验后直接commit（建议分多次，尤其是实现时对于不同模块，可以以此组织prompt）和push
+```
+
+### 细化后的总任务提示词
+
+```text
+[PROMPT]
+任务：在当前 Lab4 工程的 code/ 中完成功能模块三“进程调度”，
+让 initproc 能够从 idleproc 手中接管 CPU，并通过 make grade 的调度测试。
+
+功能目标：idleproc 在 cpu_idle() 中发现需要重新调度时调用 schedule()；
+schedule() 选出下一个 PROC_RUNNABLE 线程，交给 proc_run()；
+proc_run() 在关中断条件下切换 current 和页表，调用 switch_to()；
+switch_to() 保存旧线程、恢复新线程的被调用者保存寄存器。
+
+修改范围：
+- kern/process/switch.S：switch_to()。
+- kern/process/proc.c：proc_run() 和 cpu_idle()，放在 LAB4 function3 区域。
+- kern/schedule/sched.c：schedule()，放在 LAB4 function3 区域。
+- 将三处“LAB4 function3 YOUR CODE”中的 YOUR CODE 替换为 2412737。
+- 不修改模块一、模块二已完成的函数，不修改 tools/ 下的测试与评分脚本。
+
+工作方向（自底向上，每完成一个函数单独编译并提交一次）：
+1. switch_to：先确定 struct context 的字段偏移，再写保存/恢复汇编。
+2. proc_run：依赖 switch_to，完成 current、satp 和上下文的切换。
+3. schedule + cpu_idle：依赖 proc_run，完成调度选择和空闲循环；
+   接入后运行 make qemu 和 make grade 做整体验证。
+
+验收方式：make 编译无错误无警告；make qemu 输出 initproc 的
+"this initproc, pid = 1, name = "init"" 等字符串；
+make grade 中 check PMM、check Process Create、check Schedule 全部通过。
+
+[RELY]
+- proc.h：struct context 依次为 ra、sp、s0~s11，共 14 个寄存器宽度；
+  struct proc_struct 中的 state、need_resched、runs、context、pgdir、list_link。
+- proc.c：全局变量 proc_list、idleproc、initproc、current；
+  idleproc 由 proc_init() 设为 RUNNABLE 且 need_resched = 1，
+  但 idleproc 不在 proc_list 中；do_fork() 用 list_add(&proc_list, ...) 登记新线程。
+- copy_thread()：新线程 context.ra = forkret，context.sp = proc->tf；
+  首次运行链路为 switch_to -> forkret -> forkrets -> __trapret -> sret -> kernel_thread_entry。
+- sync.h：local_intr_save(x) / local_intr_restore(x)，可嵌套使用。
+- riscv.h：STORE/LOAD/REGBYTES 汇编宏，SATP_MODE_SV39 = 8，RISCV_PGSHIFT = 12；
+  lsatp() 是 Sv32 遗留实现，不可用。
+- pmm.c：enable_paging() 中 write_csr(satp, 0x8000000000000000 | (boot_pgdir_pa >> RISCV_PGSHIFT))
+  是正确的 Sv39 写法；pmm.h 提供 flush_tlb()。
+- tools/test_lab4.c：test_lab4_schedule() 在 init_main 入口额外创建两个线程，
+  反复设置 need_resched 并调用 schedule()，要求两个线程都运行过。
+
+[GUARANTEE]
+void switch_to(struct context *from, struct context *to);   (kern/process/switch.S)
+void proc_run(struct proc_struct *proc);                      (kern/process/proc.c)
+void cpu_idle(void) __attribute__((noreturn));                (kern/process/proc.c)
+void schedule(void);                                          (kern/schedule/sched.c)
+不新增对外接口；如需辅助逻辑，保持在对应函数内部。
+
+[SPECIFICATION]
+总体要求：
+- 调度和切换过程必须原子：修改 current、satp 和执行现场期间不能被中断打断。
+- 调度点只有 cpu_idle() 和测试代码主动调用 schedule() 两处，不在时钟中断中抢占。
+- 每个函数的详细行为规格见下面各小节。
+```
+
+### 执行结果
+
+- 先将实验手册 16 个页面整理为 `class/exp/lab4.md`（工作区课程资料，不进入仓库），确认任务 3 对应“功能模块三：进程调度”。
+- 阅读队友已提交的模块一、模块二代码和 `tools/test_lab4.c`、`tools/inject.py`、`tools/grade.sh`，确认测试入口和链表登记方式。
+- 基线编译：`make` 只报 `undefined reference to 'cpu_idle'`，说明模块一、二可编译，缺口正是模块三。
+- 后续步骤：按 switch_to -> proc_run -> schedule/cpu_idle 的顺序实现，每步单独提交。
+
+## 模块三——上下文切换 switch_to()
+
+### 规范化提示词
+
+```text
+[PROMPT]
+任务：在 code/kern/process/switch.S 中实现 switch_to()。
+
+功能目标：从 from 指向的 context 保存当前线程的执行现场，
+再从 to 指向的 context 恢复目标线程的执行现场，并跳转到目标线程的 ra。
+
+修改范围：
+- 只修改 switch.S，保留首行注释并将 YOUR CODE 替换为 2412737。
+- 不修改 struct context 的定义，不修改 trapentry.S 和 process/entry.S。
+
+操作要求：先阅读 proc.h 中 struct context 和 libs/riscv.h 中的汇编宏，
+确认每个字段的偏移，再编写汇编并添加中文注释。
+
+验收方式：make 编译 switch.S 无错误；反汇编检查 14 条保存和 14 条恢复指令的偏移；
+用静态断言核对 struct context 的偏移与汇编一致。完整运行留待 schedule() 接入。
+
+[RELY]
+- struct context { ra, sp, s0, s1, ..., s11 }，均为 uintptr_t，共 14 个字段。
+- libs/riscv.h：RV64 下 STORE = sd、LOAD = ld、REGBYTES = 8。
+- proc.c 中已声明 void switch_to(struct context *from, struct context *to);
+- RISC-V 调用约定：a0、a1 为前两个参数；ra、sp、s0~s11 为被调用者保存寄存器，
+  t0~t6、a0~a7 为调用者保存寄存器。
+- 新线程的 context.ra = forkret，context.sp = proc->tf（由 copy_thread() 设置）。
+
+[GUARANTEE]
+void switch_to(struct context *from, struct context *to);
+以 .globl switch_to 导出，不新增其他符号。
+
+[SPECIFICATION]
+函数：switch_to()
+
+Pre-Condition（前置条件）：
+- a0 指向当前线程 PCB 中可写的 context，a1 指向目标线程 PCB 中已准备好的 context。
+- 调用者已关中断，并已把 current 更新为目标线程。
+
+Post-Condition（后置条件）：
+- from 中依次保存调用瞬间的 ra、sp、s0~s11。
+- ra、sp、s0~s11 被替换为 to 中的值，随后通过 ret 跳转到新的 ra。
+- 旧线程以后被切回时，好像 switch_to() 普通返回一样继续执行。
+
+Case 1（目标线程曾经运行过）：
+- to->ra 是它上次调用 switch_to() 的返回地址，恢复后回到 proc_run() 中继续执行。
+
+Case 2（目标线程首次运行）：
+- to->ra = forkret，to->sp = 新线程 trapframe 地址，ret 后进入首次运行链路。
+
+Requirements（其他约束）：
+- 偏移必须与 struct context 字段顺序一致，使用 REGBYTES 宏而不是硬编码 8。
+- 只保存/恢复 14 个被调用者保存寄存器，不保存 caller-saved 寄存器或 CSR。
+- 不修改 a0、a1 指向以外的内存，不做调度判断，不开关中断。
+```
+
+### 执行结果
+
+- 修改文件：`code/kern/process/switch.S`，首行注释改为 `//LAB4 function3 2412737`。
+- 实现内容：先用 14 条 `STORE` 把 `ra`、`sp`、`s0`~`s11` 存入 `from`，再用 14 条 `LOAD` 从 `to` 恢复，最后 `ret` 跳到新的 `ra`；注释说明了两种 `ra` 来源。
+- 编译命令：`make`。`switch.S` 编译通过；链接仍因缺少 `cpu_idle` 失败，符合当前进度。
+- 检查结果：`riscv64-unknown-elf-objdump -d obj/kern/process/switch.o` 显示保存偏移为 0~104、恢复偏移相同；在工作区临时目录编译 `_Static_assert` 检查 `sizeof(struct context) == 14 * REGBYTES` 以及 `ra`、`sp`、`s0`、`s11` 偏移，输出 `CONTEXT_LAYOUT_OK`。
+- 后续步骤：实现 `proc_run()`。
