@@ -923,3 +923,104 @@ Requirements（其他约束）：
    - 排查：`riscv64-unknown-elf-gdb` 是指向 `gdb-multiarch` 15.1 的链接；评分脚本不加载 ELF，GDB 拒绝 QEMU 4.1.1 提供的目标描述，无法确定架构。
    - 处理：在临时副本生成的 `.gdb.in` 首行加入 `set architecture riscv:rv64`，评分随即通过。若组内需要在本机直接运行 `make grade`，可在管理员终端执行 `net stop winnat` 和 `net start winnat` 释放保留端口，或统一修改评分脚本，需组内确认后再改。
 3. 全量编译时出现 `kern/mm/kmalloc.c:92` 的 `-Wint-conversion` 警告；评分时 `test_lab4.c` 也会因测试线程函数返回 `void` 产生类型提示。两者分别来自起始代码和课程测试文件，不影响结果，未修改。
+
+## Challenge——任务说明与工作方向
+
+### 实际发送的提示词
+
+```text
+1. 继续完成challange，prompt要求同上，完成后整合我们所有人的工作为一份实验报告
+```
+
+### 细化后的总任务提示词
+
+```text
+[PROMPT]
+任务：完成 Lab4 的两个扩展练习，并把全组 Lab4 工作整合为 report/report.md。
+Challenge 1：说明 local_intr_save(intr_flag); ... local_intr_restore(intr_flag); 如何实现开关中断。
+Challenge 2：结合 sv32、sv39、sv48 解释 get_pte() 中两段相似代码的原因，
+并评价“查找页表项”和“分配页表页”合并在一个函数里的写法。
+
+工作方向：
+1. 两个 Challenge 都是分析题，结论必须以当前工程源码为依据，并尽量用临时副本中的实验验证，
+   不修改正式工程的 sync.h、pmm.c 等文件。
+2. 每个 Challenge 单独记录一轮提示词和执行结果，各提交一次。
+3. 报告按 docs/实验报告模板.md 的章节编排，覆盖实验手册“实验报告要求”的 7 项；
+   成员信息、分工、提示词和测试结果只采用仓库与提交记录中的真实内容，缺失内容如实标注。
+
+验收方式：实验输出与分析结论一致；报告引用的截图全部提交到 report/images/；
+Markdown 中粗体、行内代码和图片路径在 Typora/GitHub 中正常渲染。
+```
+
+### 执行结果
+
+- 确认远程 `lab4` 没有新提交，在本地 `lab4` 上继续工作。
+- 两个 Challenge 的结论分别见下面两节；报告整合见“报告整合”一节。
+
+## Challenge 1——local_intr_save / local_intr_restore 开关中断原理
+
+### 规范化提示词
+
+```text
+[PROMPT]
+任务：说明 local_intr_save(intr_flag); ... local_intr_restore(intr_flag); 是如何实现开关中断的。
+
+功能目标：从宏展开、CSR 操作、嵌套使用和线程切换四个层面解释这对宏，
+并在临时工程副本中用实验验证关键结论。
+
+修改范围：不修改正式工程；实验代码只放在工作区临时副本中。
+
+操作要求：阅读 kern/sync/sync.h、kern/driver/intr.c、libs/riscv.h 中的 read_csr/set_csr/clear_csr，
+以及 pmm.c、console.c、proc.c、sched.c 中的调用点，再给出解释。
+
+验收方式：在 kern_init() 打开中断后调用临时测试函数，打印外层/内层保存后的 flag 与 SIE，
+在关中断期间忙等超过一个时钟周期，观察 ticks 和 sip.STIP；
+另外用一个 if/else 片段对宏做编译检查。
+
+[RELY]
+- sync.h：__intr_save() 读取 sstatus，SIE 为 1 时调用 intr_disable() 并返回 1，否则返回 0；
+  __intr_restore(flag) 在 flag 为 1 时调用 intr_enable()；
+  #define local_intr_save(x) do { x = __intr_save(); } while (0)
+  #define local_intr_restore(x) __intr_restore(x);
+- intr.c：intr_enable() 为 set_csr(sstatus, SSTATUS_SIE)，intr_disable() 为 clear_csr(sstatus, SSTATUS_SIE)。
+- clock.c：timebase = 100000，即 10 MHz 下每 10 ms 一次时钟中断；ticks 为 volatile 计数。
+- 硬件：进入 S 态 trap 时 SIE 存入 SPIE 并清零 SIE，sret 时由 SPIE 恢复 SIE；
+  中断被屏蔽期间 sip 中的挂起位保持。
+
+[GUARANTEE]
+输出一段完整的分析说明，以及临时实验的源代码和运行结果。
+
+[SPECIFICATION]
+Pre-Condition（前置条件）：
+- 单核 RISC-V，内核运行在 S 态，时钟中断已经通过 clock_init() 和 intr_enable() 打开。
+
+Post-Condition（后置条件）：
+- 解释清楚 flag 保存的是“进入临界区前 SIE 是否为 1”，而不是固定的开/关动作。
+- 说明嵌套时只有最外层的 restore 会重新开中断。
+- 说明屏蔽期间的中断是被推迟而不是丢失。
+- 说明 proc_run() 中 intr_flag 存放在各线程自己的栈上，以及新线程首次运行时由 sret 打开中断。
+
+Requirements（其他约束）：
+- 指出这对宏只屏蔽当前 hart 的 S 态中断，不屏蔽异常，在多核上不能代替锁。
+- 如果发现宏定义本身的隐患，需要给出可复现的证据。
+```
+
+### 执行结果
+
+- 实验位置：工作区临时副本 `chal/`，在 `kern_init()` 的 `intr_enable()` 之后调用 `challenge1_test()`，正式工程未改动。
+- 实际输出：
+
+```text
+[C1] before save        : SIE=1
+[C1] outer save         : flag=1 SIE=0
+[C1] inner save (nested): flag=0 SIE=0
+[C1] busy-wait 50ms with SIE=0: ticks 0 -> 0, sip.STIP=1
+[C1] inner restore      : SIE=0 (still disabled)
+[C1] outer restore      : SIE=1, ticks now 1 (pending interrupt taken once)
+```
+
+- 结论：外层保存得到 `flag=1` 并关中断；内层保存时 SIE 已为 0，得到 `flag=0`，因此内层恢复不会提前开中断。关中断 50 ms 期间 `ticks` 不变而 `sip.STIP=1`，说明时钟中断被挂起；外层恢复后立即进入一次中断处理，`ticks` 变为 1。
+- 发现的问题：`local_intr_restore(x)` 的宏定义末尾自带分号，展开后变成 `__intr_restore(x);;`。编写 `if (c) local_intr_restore(flag); else ...` 并用工程编译参数 `-fsyntax-only` 检查，报 `error: 'else' without a previous 'if'`。现有调用点都没有写在 if/else 分支中，所以不影响本实验；修复方式是与 `local_intr_save` 一样改成 `do { ... } while (0)` 且去掉末尾分号。sync.h 属于框架代码，未修改，在报告中记录。
+![Challenge 1 实验输出](./images/lab4_challenge1_intr.png)
+
+- 完整分析写入 `report/report.md` 的 Challenge 1 一节。
