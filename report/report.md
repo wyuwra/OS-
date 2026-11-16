@@ -139,7 +139,7 @@ void page_remove(pde_t *pgdir, uintptr_t la);                                   
 
 - `page_insert()` 把物理页 `page` 映射到线性地址 `la`，权限为 `perm`。它先用 `get_pte(pgdir, la, 1)` 找到（必要时建立）叶子页表项，失败返回 `-E_NO_MEM`。
 - `page_remove()` 撤销 `la` 的映射；没有映射时直接返回，是幂等操作。
-- 两者都要保持“页表项内容、物理页引用计数、TLB”三者一致，是 `check_pgdir()`、评分测试 `[Test PMM]` 以及后续用户地址空间的基础。
+- 两者都要保证页表项内容、物理页引用计数和 TLB 三者一致，是 `check_pgdir()`、`check_boot_pgdir()`、评分测试 `[Test PMM]` 以及后续用户地址空间的基础。
 
 实现要点：
 
@@ -162,15 +162,15 @@ int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
 }
 ```
 
-处理顺序的关键在于：先增加新页引用，再写 PTE、刷新 TLB，最后才减少旧页引用。若 `old_page == page`（例如只修改权限），引用计数保持不变；若先减后增，同一页的引用可能先降为 0 被释放。`page_remove()` 则是“查（`create=0`）→ 清零 PTE → 刷新 TLB → 减引用，降为 0 时释放”。
+处理顺序的关键在于先增加新页引用，再写 PTE、刷新 TLB，最后才减少旧页引用。如果 `old_page == page`（例如只修改权限），引用计数保持不变；如果先减后增，同一页的引用计数可能先降为 0 而被误释放。`page_remove()` 则先以 `create = 0` 查找对应页表项，命中后清零 PTE、刷新 TLB，再减少物理页引用计数并在归零时释放。
 
 #### 最终提示词
 
-模块一的提示词尚未记录到 `report/prompt.md` 中，需由胡楚骅补充实际发送的提示词及迭代记录。报告整合时不代写，以免与实际使用的提示词不符。
+[待补充：由胡楚骅补充模块一实际使用的提示词，并同步记录到 `report/prompt.md`]
 
 #### 实现迭代过程
 
-仓库中模块一只有一次实现提交。整合测试中，评分注入的 `[Test PMM]` 覆盖了首次映射、同一地址换页、重复映射同一页、修改权限不新增分配以及重复删除等情况，结果为 PASS；`check_pgdir()` 和 `check_boot_pgdir()` 也全部通过。
+本模块经过 1 次迭代完成实现，在后续联调和评分测试中，`[Test PMM]` 覆盖了首次映射、同一地址换页、重复映射同一页、修改权限不新增分配以及重复删除等场景，结果为 PASS；`check_pgdir()` 和 `check_boot_pgdir()` 也全部通过。
 
 **最终结果：**
 
@@ -211,9 +211,9 @@ static int copy_mm(uint32_t clone_flags, struct proc_struct *proc);
 
 几处容易出错的设计：
 
-- `context.sp` 和 `tf->gpr.sp` 是两个不同的栈指针：前者是 `switch_to` 恢复后执行 `forkret` 时用的栈（即 trapframe 所在位置），后者是 `sret` 之后线程运行时用的栈。
-- `do_fork` 在资源全部准备好之后才登记，调度器因此永远看不到“半成品”线程。
-- `set_proc_name()` 按固定长度 `PROC_NAME_LEN` 复制源数据，直接传字符串常量 `"idle"` 会越界读取，因此用完整长度的局部数组传入名称。
+- `context.sp` 和 `tf->gpr.sp` 是两个不同的栈指针：前者是 `switch_to` 恢复后执行 `forkret` 时使用的栈（即 trapframe 所在位置），后者是 `sret` 之后线程运行时使用的栈。
+- `do_fork` 在资源全部准备好之后才登记到全局链表和哈希表，调度器因此不会看到尚未初始化完成的线程。
+- `set_proc_name()` 按固定长度 `PROC_NAME_LEN` 复制源数据，直接传字符串常量 `"idle"` 会越界读取，因此用完整长度的局部数组承载名称后再传入。
 
 #### 最终提示词
 
@@ -558,15 +558,17 @@ void schedule(void);                                          (kern/schedule/sch
 
 **负责人：** 2412737-罗元伟
 
-**宏展开与 CSR 操作。** 定义位于 `kern/sync/sync.h`：
+#### 宏展开与 CSR 操作
+
+定义位于 `kern/sync/sync.h`：
 
 ```c
 static inline bool __intr_save(void) {
     if (read_csr(sstatus) & SSTATUS_SIE) {   // 读 sstatus，看 S 态全局中断是否打开
         intr_disable();                      // clear_csr(sstatus, SSTATUS_SIE)，即 csrc
-        return 1;                            // 记录“进入时是开着的，并且是我关的”
+        return 1;                            // 记录进入时中断是开着的，由本次调用关闭
     }
-    return 0;                                // 进入时已经关着，什么也不做
+    return 0;                                // 进入时已经关着，保持不变
 }
 static inline void __intr_restore(bool flag) {
     if (flag) intr_enable();                 // set_csr(sstatus, SSTATUS_SIE)，即 csrs
@@ -575,29 +577,29 @@ static inline void __intr_restore(bool flag) {
 #define local_intr_restore(x) __intr_restore(x);
 ```
 
-`sstatus.SIE`（第 1 位）是 S 态的全局中断使能位。`local_intr_save` 读出它的值：为 1 时清零并让 `intr_flag = 1`，为 0 时保持不变并让 `intr_flag = 0`。`local_intr_restore` 只在 `intr_flag = 1` 时把 SIE 置回 1。所以 `intr_flag` 记录的是**进入临界区之前中断是否开着**，退出时恢复到这个状态，而不是无条件打开。宏用 `do { } while (0)` 包裹，是为了让它在语法上成为一条语句。
+`sstatus.SIE`（第 1 位）是 S 态的全局中断使能位。`local_intr_save` 读出它的值：为 1 时清零并让 `intr_flag = 1`，为 0 时保持不变并让 `intr_flag = 0`。`local_intr_restore` 只在 `intr_flag = 1` 时把 SIE 置回 1。因此 `intr_flag` 记录的是进入临界区之前中断是否开启，退出时恢复到原状态，而不是无条件打开。宏用 `do { } while (0)` 包裹，是为了让它在语法上成为一条独立语句。
 
-**为什么要保存旧状态，而不直接关、开。** 临界区会嵌套：`schedule()` 关中断后调用 `proc_run()`，后者再次关中断；`do_fork()` 的临界区内会调用 `kmalloc`、`cprintf` 等同样关中断的函数；在 trap 处理程序中，硬件进入 trap 时已经把 SIE 存入 SPIE 并清零 SIE。如果内层退出时无条件开中断，外层剩下的部分就失去了保护。用 flag 记录后，内层得到 `flag = 0`，只有最外层的 restore 会真正重新开中断。
+#### 为什么保存旧状态而不是直接关、开
 
-**屏蔽期间的中断是被推迟，而不是丢失。** 时钟到期后 `sip.STIP` 置位并保持挂起；SIE 重新置 1 后，CPU 立即响应这个挂起的中断。
+临界区在内核中经常嵌套：`schedule()` 关中断后调用 `proc_run()`，后者会再次关中断；`do_fork()` 的临界区内会调用 `kmalloc`、`cprintf` 等同样包含关中断保护的函数；在 trap 处理程序中，硬件进入 trap 时已经把 SIE 存入 SPIE 并清零 SIE。如果内层退出时直接无条件开中断，外层剩余代码就会失去保护。使用 `flag` 记录原状态后，内层得到 `flag = 0`，只有最外层的 restore 会真正重新打开中断。
 
-**在线程切换中的配对关系。** `proc_run()` 中的 `intr_flag` 是旧线程栈上的局部变量。旧线程在 `switch_to` 中被换下，以后被切回时，从 `switch_to` 返回并执行自己的 `local_intr_restore(intr_flag)`，恢复的是它自己进入临界区前的状态。新线程第一次运行不经过这条 restore，而是 `kernel_thread()` 在 trapframe 的 `status` 中设置了 `SPIE = 1`、`SIE = 0`：恢复现场期间中断保持关闭，`sret` 时 SPIE 写回 SIE，中断随之打开。
+屏蔽期间的中断并不是丢失，而是被推迟。时钟到期后 `sip.STIP` 会置位并保持挂起；当 SIE 重新置 1 后，CPU 会立即响应这个挂起的中断。
 
-**作用范围。** 这对宏只屏蔽当前 hart 的 S 态中断，不影响异常（如缺页、非法指令），也不影响其他 CPU。在单核上，“关中断”就足以保证临界区不被打断；在多核上，其他 hart 仍可同时访问共享数据，需要再配合自旋锁。`kmalloc.c` 中把 `spin_lock_irqsave` 直接定义为 `local_intr_save`，正是利用了单核这一前提。
+#### 在线程切换中的配对关系与作用范围
 
-**实验验证。** 在临时副本的 `kern_init()` 中，于 `intr_enable()` 之后调用测试函数：外层 save、内层 save、在 SIE = 0 时忙等约 50 ms（时钟周期为 10 ms）、内层 restore、外层 restore，并依次记录 flag、SIE、`ticks` 与 `sip.STIP`：
+`proc_run()` 中的 `intr_flag` 是旧线程栈上的局部变量。旧线程在 `switch_to` 中被换下，之后被切回时，从 `switch_to` 返回并执行自己的 `local_intr_restore(intr_flag)`，恢复的是它自己进入临界区前的状态。新线程第一次运行不经过这条 restore，而是由 `kernel_thread()` 在 trapframe 的 `status` 中预设了 `SPIE = 1`、`SIE = 0`：恢复现场期间中断保持关闭，执行 `sret` 时 SPIE 写回 SIE，中断随之打开。
+
+这对宏只屏蔽当前 hart 的 S 态中断，不影响异常（如缺页、非法指令），也不影响其他 CPU。在单核环境下，关中断就足以保证临界区不被打断；在多核环境下，其他 hart 仍可同时访问共享数据，需要配合自旋锁使用。`kmalloc.c` 中把 `spin_lock_irqsave` 直接定义为 `local_intr_save`，正是基于单核这一前提。
+
+#### 实验验证与发现的隐患
+
+在临时副本的 `kern_init()` 中，于 `intr_enable()` 之后调用测试函数：依次执行外层 save、内层 save、在 SIE = 0 时忙等约 50 ms（时钟周期为 10 ms）、内层 restore、外层 restore，并记录每一步的 `flag`、SIE、`ticks` 与 `sip.STIP`：
 
 ![Challenge 1 实验输出](./images/lab4_challenge1_intr.png)
 
-外层得到 `flag = 1`，内层得到 `flag = 0`；内层 restore 后 SIE 仍为 0。关中断的 50 ms 内 `ticks` 不变，`sip.STIP = 1`；外层 restore 后立即响应一次时钟中断，`ticks` 变为 1。多个到期的时钟事件只合并成一次，因为 STIP 是一个电平状态位，而不是计数器。
+实验输出中，外层得到 `flag = 1`，内层得到 `flag = 0`；内层 restore 后 SIE 仍为 0。关中断的 50 ms 内 `ticks` 保持不变，`sip.STIP = 1`；外层 restore 后立即响应一次时钟中断，`ticks` 变为 1。由于 STIP 是电平状态位而非计数器，关中断期间多次到期的时钟事件只合并为一次响应。
 
-**发现的隐患。** `local_intr_restore(x)` 的定义末尾自带分号，展开后变为 `__intr_restore(x);;`。如果写成 `if (c) local_intr_restore(flag); else ...`，多出的空语句会让 `else` 失去对应的 `if`；用工程编译参数检查，得到 `error: 'else' without a previous 'if'`。当前所有调用点都不在 if/else 分支中，因此不影响本实验。更稳妥的写法是：
-
-```c
-#define local_intr_restore(x) do { __intr_restore(x); } while (0)
-```
-
-`sync.h` 属于框架代码，我们没有修改，只在此记录。
+此外，在检查 `sync.h` 时发现 `local_intr_restore(x)` 定义末尾自带分号，展开后会变成 `__intr_restore(x);;`。如果写在 `if (c) local_intr_restore(flag); else ...` 中，多出的空语句会导致 `else` 失去对应的 `if`（用工程编译参数检查会报 `error: 'else' without a previous 'if'`）。当前工程中的所有调用点都不在 if/else 分支中，因此不影响本实验；更稳妥的写法是同样使用 `do { __intr_restore(x); } while (0)`。`sync.h` 属于框架代码，未作修改，此处仅记录分析结果。
 
 ---
 
@@ -627,7 +629,7 @@ return &((pte_t *)KADDR(PDE_ADDR(*pdep0)))[PTX(la)];    // 返回 VPN[0] 处的�
 
 三者的共同点是：每一级页表都正好占一个 4 KiB 页，每一级的 PTE 格式相同（PPN + `V`/`R`/`W`/`X`/`U`/`G`/`A`/`D`），而且判断规则也相同——有效且 `R = W = X = 0` 的 PTE 指向下一级页表，否则就是叶子。因此，硬件在每一级做的事情完全一样：用对应的 VPN 位段索引当前页表，取出 PTE，再跳到它指向的下一级。
 
-`get_pte()` 在每一级非叶页表上做的也是同一件事：用该级 VPN 定位表项；表项无效且允许创建时，分配一页、清零（使新表中的所有表项都无效）、写入指向它的非叶 PTE；然后进入下一级。两段代码之所以几乎一样，是因为它们本来就是**同一个“逐级下降”循环在 Sv39 下展开后的两次迭代**，区别只在于索引位段（`PDX1` 取第 38~30 位，`PDX0` 取第 29~21 位）。最后一级 `PTX` 只取叶子表项地址，不再建表，所以形式不同。按照同样的规律，Sv32 下只有一段，Sv48 下会有三段。
+`get_pte()` 在每一级非叶页表上做的也是同一件事：用该级 VPN 定位表项；表项无效且允许创建时，分配一页、清零（使新表中的所有表项都无效）、写入指向它的非叶 PTE；然后进入下一级。两段代码之所以几乎一样，是因为它们本质上是同一个逐级向下查找循环在 Sv39 下展开后的两次迭代，区别只在于索引位段（`PDX1` 取第 38~30 位，`PDX0` 取第 29~21 位）。最后一级 `PTX` 只取叶子表项地址，不再建表，所以形式不同。按照同样的规律，Sv32 下只有一段，Sv48 下会有三段。
 
 为了验证这一点，我们在临时副本中把两段代码改写为循环：
 
@@ -654,34 +656,34 @@ return &table[PTX(la)];
 
 #### 查找与分配合并在一个函数里好不好，有没有必要拆开
 
-我们的看法是：在当前教学内核中，合并的写法够用；但它把两种语义放进了一个函数，带来了几个实际问题，值得拆开，或者至少改写为“循环 + 分离的分配策略”。
+我们的看法是：在当前教学内核中，合并的写法够用；但它把查找和分配两种语义放进了一个函数，带来了几个实际问题，值得拆开，或者至少改写为循环加上分离的分配策略。
 
 合并写法的优点：
 
-- 调用简单：`page_insert()` 用 `create = 1` 一次完成“找到或建立”，`get_page()`、`page_remove()` 用 `create = 0` 只查不建，共用同一次遍历。
-- 代码量小，与 Sv39 的固定三级结构直接对应，便于初学者阅读。
+- 调用简单：`page_insert()` 用 `create = 1` 一次完成查找或建表，`get_page()`、`page_remove()` 用 `create = 0` 只查不建，共用同一次遍历。
+- 代码量小，与 Sv39 的固定三级结构直接对应，便于阅读。
 
 合并写法的问题：
 
-1. **返回值含义不清。** 返回 `NULL` 既可能是“没有映射”（`create = 0`），也可能是“分配失败”（`create = 1`），调用者无法区分。`page_insert()` 只能一律当作 `-E_NO_MEM`。
-2. **失败时不回滚。** 第二级表分配成功、第三级分配失败时，已经建立的第二级表会保留下来。它不会造成错误，但会占用一页内存，也与 `do_fork` 那种“失败后恢复原状”的约定不一致。
-3. **查找路径不识别大页。** 函数只检查 `PTE_V`，默认每一级有效 PTE 都指向下一级。实验发现，启动页表 `boot_page_table_sv39` 的第 511 项是 1 GiB 大页叶子（`0xcf`，含 `R`/`W`/`X`），覆盖整个内核。如果对内核虚拟地址调用 `get_pte()`，函数会把这个叶子当作页表，去读物理地址 `0x80000008`（OpenSBI 所在区域）中的“表项”；若再用 `create = 1`，还会把新表写进固件内存。“查找”本应能识别叶子并停止，而“分配”的语义掩盖了这个问题。
-4. **自检没有覆盖到这一点。** `check_boot_pgdir()` 本应逐页检查内核映射，但循环变量 `i` 是 `int`，`ROUNDDOWN(KERNBASE, PGSIZE)` 被截断为负数，再与 `size_t` 类型的 `npage * PGSIZE` 比较时转换为很大的无符号数，循环一次也不执行（在主机上用相同类型复现，迭代次数为 0）。因此第 3 点没有被发现。
-5. **非叶 PTE 的标志不符合规范。** 新建的中间表项写入了 `PTE_U`。RISC-V 特权级规范规定非叶 PTE 的 `D`、`A`、`U` 位保留，软件应当清零。QEMU 不检查这一点，所以当前可以运行，但在更严格的实现上可能出问题。
-6. **难以扩展。** 分配策略（用哪个分配器、是否清零、中间表项的权限）固化在查找逻辑中；换成 Sv48 需要再复制一段代码。
+1. **返回值含义不清**：返回 `NULL` 既可能是没有映射（`create = 0`），也可能是分配失败（`create = 1`），调用者无法区分。`page_insert()` 只能一律当作 `-E_NO_MEM`。
+2. **失败时不回滚**：第二级表分配成功、第三级分配失败时，已经建立的第二级表会保留下来。它不会造成错误，但会占用一页内存，也与 `do_fork` 失败后恢复原状的约定不一致。
+3. **查找路径不识别大页**：函数只检查 `PTE_V`，默认每一级有效 PTE 都指向下一级。实验发现，启动页表 `boot_page_table_sv39` 的第 511 项是 1 GiB 大页叶子（`0xcf`，含 `R`/`W`/`X`），覆盖整个内核。如果对内核虚拟地址调用 `get_pte()`，函数会把这个叶子当作页表，去读物理地址 `0x80000008`（OpenSBI 所在区域）中的表项；若再用 `create = 1`，还会把新表写进固件内存。查找逻辑本应识别叶子并停止，而与分配混在一起掩盖了这个问题。
+4. **自检没有覆盖到这一点**：`check_boot_pgdir()` 本应逐页检查内核映射，但循环变量 `i` 是 `int`，`ROUNDDOWN(KERNBASE, PGSIZE)` 被截断为负数，再与 `size_t` 类型的 `npage * PGSIZE` 比较时转换为很大的无符号数，导致循环一次也不执行（在主机上用相同类型复现，迭代次数为 0），因此第 3 点没有被发现。
+5. **非叶 PTE 的标志不符合规范**：新建的中间表项写入了 `PTE_U`。RISC-V 特权级规范规定非叶 PTE 的 `D`、`A`、`U` 位保留，软件应当清零。QEMU 不检查这一点，所以当前可以运行，但在更严格的实现上可能出问题。
+6. **难以扩展**：分配策略（使用的分配器、是否清零、中间表项权限）固化在查找逻辑中，换成 Sv48 需要再复制一段代码。
 
-改进建议：保留 `get_pte()` 这个对外接口，使现有调用者不需要修改；内部拆成两部分：
+改进建议是保留 `get_pte()` 作为对外接口，使现有调用者不需要修改，内部拆成两部分：
 
 ```c
-// 只查找：遇到无效项返回 NULL，遇到叶子（R/W/X 任一为 1）时停止并返回该叶子
+// 仅查找：遇到无效项返回 NULL，遇到叶子（R/W/X 任一为 1）时停止并返回该叶子
 pte_t *pte_lookup(pde_t *pgdir, uintptr_t la);
 // 查找并按需建表：失败时返回明确的错误码，并释放本次新建的中间页表
 int pte_walk_alloc(pde_t *pgdir, uintptr_t la, pte_t **ptep_store);
 ```
 
-两者都用“按层循环”实现，级数由分页模式决定。Linux 也采用类似的分离方式：`pgd_offset`/`pud_offset`/`pmd_offset` 负责查找，`pud_alloc`/`pmd_alloc`/`pte_alloc` 负责按需分配。
+两者都用按层循环实现，级数由分页模式决定。Linux 也采用类似的分离方式：`pgd_offset`/`pud_offset`/`pmd_offset` 负责查找，`pud_alloc`/`pmd_alloc`/`pte_alloc` 负责按需分配。
 
-上述 3~5 点都属于框架代码，不在本组任务的修改范围内，我们没有改动正式工程，只在报告中记录。
+上述 3~5 点均属于框架原有代码，本次实验未改动正式工程，仅在报告中记录。
 
 ---
 
@@ -720,7 +722,7 @@ int pte_walk_alloc(pde_t *pgdir, uintptr_t la, pte_t **ptep_store);
 | `proc_struct` | 进程控制块（PCB） | 原理中的 PCB 包含进程状态、寄存器、调度信息、内存信息、打开文件等。实验中的结构只保留了状态、PID、内核栈、上下文、trapframe、页表、链表节点，没有文件、信号等字段 |
 | `PROC_UNINIT`/`RUNNABLE`/`SLEEPING`/`ZOMBIE` | 进程状态模型 | 原理中常用“就绪”和“运行”两个状态；实验中两者合并为 `RUNNABLE`，是否在运行由 `current` 区分 |
 | `switch_to` 与 `struct context` | 上下文切换 | 原理说切换时要保存 CPU 现场。实验利用函数调用约定，只保存被调用者保存的 14 个寄存器，其余寄存器由编译器在调用点处理 |
-| `trapframe` 与 `context` | 中断现场与进程现场 | trapframe 保存被中断打断时的全部寄存器和 CSR；context 只用于线程之间主动切换。新线程借用“伪造的 trapframe + sret”完成第一次运行 |
+| `trapframe` 与 `context` | 中断现场与进程现场 | trapframe 保存被中断打断时的全部寄存器和 CSR；context 只用于线程之间主动切换。新线程借用构造好的初始 trapframe 和 `sret` 完成第一次运行 |
 | `schedule()` | 进程调度、FIFO/轮转 | 原理中的轮转调度依靠时间片和时钟中断实现抢占；实验中的调度点只有 `cpu_idle`，属于非抢占式，轮转只体现在查找起点上 |
 | `idleproc` | 空闲进程 | 两者一致：没有其他就绪进程时占用 CPU。实验中它还承担完成内核初始化的角色，且不在 `proc_list` 中 |
 | `do_fork`、`kernel_thread` | 进程创建（fork） | 原理中 fork 复制父进程的地址空间；实验中只创建共享内核地址空间的线程，`copy_mm` 是占位，相当于 `CLONE_VM` |
@@ -742,8 +744,8 @@ int pte_walk_alloc(pde_t *pgdir, uintptr_t la, pte_t **ptep_store);
 
 ### AI 协作开发的经验
 
-- **一次只让 AI 做一件可验证的事。** 模块二拆成 6 轮、模块三拆成 3 轮，每轮只实现一个函数并单独提交。出错时能立刻定位到某一轮，提交历史也与提示词一一对应。
-- **`[RELY]` 必须来自当前源码。** 许多网上的 ucore 代码基于 Sv32 或 x86，例如 `proc_run` 中的 `lsatp()`。提示词中明确写出“`lsatp()` 不可用、参照 `enable_paging()`”，以及“`idleproc` 不在 `proc_list` 中”这样的工程事实后，生成的代码与现有框架一致。
-- **用临时副本验证中间状态。** 后面的函数尚未实现时，无法直接跑完整测试。我们在临时副本中加测试入口、临时替换未完成的函数（例如用直接调用 `proc_run(initproc)` 的 `cpu_idle` 验证切换链路），正式工程保持干净。
-- **测试失败时先区分环境问题和代码问题。** `make grade` 得 0 分时，我们没有急于修改代码或评分脚本，而是按脚本参数手动启动 QEMU 和 GDB，逐步看到真实的错误信息，最终定位到 Windows 保留端口和 GDB 架构识别两个环境原因。环境问题单独记录，课程评分脚本保持不变。
-- **思考题也可以用实验来支撑。** Challenge 中“嵌套关中断”“中断被推迟”“两段代码是循环展开”等结论都有对应的实验输出，分析过程中还发现了宏末尾分号、启动大页和自检循环不执行等框架问题，比只写文字结论更可靠。
+这次实验把大模块拆成按函数推进的多个小步，比如模块二拆成 6 轮、模块三拆成 3 轮，每完成一个函数就单独编译验证并提交。这样一旦出错能立刻定位到对应那一步，提交记录也和提示词一一对应，比一次性让 AI 生成整个模块稳妥得多。
+
+在编写 `[RELY]` 时，所有寄存器位宽、宏定义和全局结构约束都必须直接对照当前源码。网上很多 ucore 代码基于 Sv32 或 x86，如果不在提示词里写明 `lsatp()` 是 Sv32 遗留实现、必须参照 `enable_paging()` 来写 `satp`，以及 `idleproc` 不在 `proc_list` 中、`do_fork` 用 `list_add` 插在头结点之后，AI 很容易按旧版代码生成错误的实现。
+
+在前后函数尚未全部接通时，直接在临时工程副本里加测试入口（例如用直接调用 `proc_run(initproc)` 的临时 `cpu_idle` 验证切换链路），可以避免把调试代码混入正式工程。遇到 `make grade` 得 0 分时，先按评分脚本参数手动启动 QEMU 和 GDB 看清真实报错，也能避免误判为内核代码 bug。另外，做 Challenge 时把“嵌套关中断”“中断推迟”“两段代码等价于循环”都实际跑出实验输出，还能顺带发现 `sync.h` 宏末尾分号和 `check_boot_pgdir()` 整型溢出这类隐藏问题。
