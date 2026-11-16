@@ -1024,3 +1024,74 @@ Requirements（其他约束）：
 ![Challenge 1 实验输出](./images/lab4_challenge1_intr.png)
 
 - 完整分析写入 `report/report.md` 的 Challenge 1 一节。
+
+## Challenge 2——get_pte() 两段相似代码与是否拆分
+
+### 规范化提示词
+
+```text
+[PROMPT]
+任务：回答 get_pte() 的两个思考题：
+(1) 结合 sv32、sv39、sv48 的异同，解释 get_pte() 中两段代码为什么如此相像；
+(2) 评价“页表项查找”和“页表页分配”合并在一个函数里的写法，说明有没有必要拆开。
+
+功能目标：给出基于 RISC-V 特权级规范和当前源码的分析，并在临时副本中验证：
+地址分解、按需分配的页数、非叶 PTE 的标志，以及“循环改写”与原实现等价。
+
+修改范围：不修改正式工程的 pmm.c；循环改写和实验代码只放在临时副本。
+
+操作要求：阅读 kern/mm/pmm.c 的 get_pte()、get_page()、page_insert()、page_remove()、
+check_pgdir()、check_boot_pgdir()，kern/mm/mmu.h 的 PDX1/PDX0/PTX/PTE_ADDR 等宏，
+以及 kern/init/entry.S 中的 boot_page_table_sv39。
+
+验收方式：
+- 临时副本打印一个虚拟地址的 VPN[2]、VPN[1]、VPN[0]，对比 create=0/1 的返回值和空闲页变化；
+- 打印启动页表中内核所在表项的标志，检查是否为大页叶子；
+- 把 get_pte() 改写为按层循环，在临时副本中运行评分脚本，三项检查全部通过。
+
+[RELY]
+- mmu.h：PDX1SHIFT = 30、PDX0SHIFT = 21、PTXSHIFT = 12，每级索引 9 位；
+  PTE_ADDR(pte) 取出 PTE 中的物理页号并换算为物理地址；PTE_V/R/W/X/U 标志位。
+- get_pte(pgdir, la, create)：第一段处理 PDX1 指向的一级表项，第二段处理 PDX0 指向的二级表项，
+  无效且 create 为真时分配一页、清零、写入 PTE_U | PTE_V 的非叶表项，最后返回 PTX 对应的叶子 PTE 地址。
+- 调用者：page_insert() 用 create=1，get_page()、page_remove() 和自检代码用 create=0。
+- entry.S：boot_page_table_sv39 只设置了第 511 项，值为 (0x80000 << 10) | 0xcf。
+- 规范：Sv32 为 2 级（10+10 位索引），Sv39 为 3 级（9+9+9），Sv48 为 4 级（9+9+9+9）；
+  R=W=X=0 的有效 PTE 指向下一级页表，否则为叶子。
+
+[GUARANTEE]
+输出两道思考题的回答、实验代码要点和运行结果；可以给出建议的拆分接口，但不提交到正式工程。
+
+[SPECIFICATION]
+Post-Condition（后置条件）：
+- 说明两段代码分别对应 Sv39 的哪一级，以及 Sv32/Sv48 下这样的代码段各有几段。
+- 说明相像的根本原因：每一级页表的格式和处理步骤完全相同，只是索引位段不同。
+- 对“是否拆分”给出明确观点，并列出合并写法的优点、问题和改进方案。
+
+Requirements（其他约束）：
+- 结论需要与实验输出一致；如果发现当前实现与规范或启动页表不一致，如实记录并说明影响范围。
+```
+
+### 执行结果
+
+- 实验位置：同一临时副本中的 `challenge2_test()`，正式工程未改动。实际输出：
+
+```text
+[C2] la=0x40201000  VPN2(PDX1)=1 VPN1(PDX0)=1 VPN0(PTX)=1 offset=0x0
+[C2] create=0 on unmapped la -> NULL, free pages unchanged
+[C2] create=1 first walk : allocated 2 page-table pages (level1 + level0)
+[C2] create=1 next page  : allocated 0 pages, same leaf table=1
+[C2] non-leaf PTE flags  : level2=0x11 level1=0x11 (V|U, R=W=X=0)
+[C2] kernel VPN2=511 entry flags=0xcf -> leaf(R|W|X)=1, a 1GiB gigapage
+[C2] get_pte would treat that leaf as a table and read PA 0x80000008 (firmware/kernel data)
+```
+
+- 循环改写：在另一份临时副本 `getpte-loop/` 中把两段代码改为 `for (level = 0; level < 2; level++)`，用 `shift[] = {PDX1SHIFT, PDX0SHIFT}` 选择索引位段。按上一轮的评分方式运行，`check_pgdir()`、`check_boot_pgdir()` 通过，三项检查 OK，总分 30/30，说明两段代码就是逐级遍历展开后的结果。
+- 发现的问题：
+  1. 启动页表第 511 项是 1 GiB 大页叶子（`0xcf` 含 R/W/X），`get_pte()` 只检查 `PTE_V`，若对内核虚拟地址调用，会把叶子当作下一级页表，访问物理地址 `0x80000008`（OpenSBI 所在区域）。
+  2. `check_boot_pgdir()` 本应遍历内核映射，但循环变量 `i` 是 `int`，`ROUNDDOWN(KERNBASE, PGSIZE)` 被截断为负数，与 `size_t` 比较时又转换成很大的无符号数，循环 0 次（主机上用同样类型复现，`iterations=0`）。因此第 1 点没有被自检发现。
+  3. 非叶 PTE 写入了 `PTE_U`。RISC-V 特权级规范规定非叶 PTE 的 D、A、U 位保留，软件应清零；QEMU 不检查，所以当前能运行。
+  - 以上都属于框架代码，不在本组任务的修改范围内，记录在报告中，未修改正式工程。
+![Challenge 2 实验输出](./images/lab4_challenge2_get_pte.png)
+
+- 完整分析写入 `report/report.md` 的 Challenge 2 一节。
