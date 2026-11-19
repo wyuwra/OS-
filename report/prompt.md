@@ -96,6 +96,16 @@ void page_remove(pde_t *pgdir, uintptr_t la);
 只改这两处，保留学号标记，不改映射逻辑、头文件或测试。改完展示 diff，本轮不用运行整套 `make grade`。
 ~~~~
 
+### 执行结果
+
+| 轮次 | 改动与结果 |
+|---|---|
+| 1. page_insert() | 在模块一预留区域实现新映射、同页权限更新、替换映射和分配失败返回，完成源码核对。 |
+| 2. page_remove() | 实现有效位检查、撤销映射、TLB 失效和引用计数回收，完成源码核对。 |
+| 3. 编译修正 | GCC 报告 `true`、`false` 未定义，按工程约定替换为 `1`、`0`。两个函数的最终实现提交为 `431e66d`。 |
+
+使用临时工程副本运行模块一测试，经框架兼容性适配后得到 `check_pgdir() succeeded!`、`check_boot_pgdir() succeeded!` 和 `[Test PMM] PASS`。小组随后完成整体验证，实验结果见 [report.md](report.md) 第五节。
+
 ## 模块二——初始化进程控制块 alloc_proc()
 
 ### 规范化提示词

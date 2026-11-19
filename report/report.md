@@ -12,8 +12,6 @@
 
 ### 小组分工
 
-练习如何分工？
-
 | 成员 | 负责的练习/模块 |
 |------|----------------|
 | 2412832-王雅枫 | 迁移 Lab2/Lab3 实现到 Lab4 框架；功能模块二：进程创建及初始化（`alloc_proc`、`copy_mm`、`copy_thread`、`do_fork`、`kernel_thread`、`proc_init`） |
@@ -21,8 +19,6 @@
 | 2412737-罗元伟 | 功能模块三：进程调度（`switch_to`、`proc_run`、`schedule`、`cpu_idle`）；扩展练习 Challenge 1、Challenge 2；整体测试 |
 
 三个功能模块按依赖顺序完成：模块一和迁移工作先提交，模块二在其上创建线程，模块三最后接入调度并做整体验证。代码中的 `LAB4 functionN` 注释已替换为对应负责人的学号；迁移进来的 Lab2/Lab3 代码保留原负责人的学号注释。
-
-实验报告如何分工？
 
 各成员在 `report/prompt.md` 中记录自己负责部分的提示词和每轮执行结果。罗元伟依据代码、提交记录和 `prompt.md` 整合本报告，并编写模块三、Challenge 和测试部分；模块一、模块二的说明由各负责人审阅确认。
 
@@ -41,12 +37,10 @@
 
 ## 二、实验环境
 
-你们使用的 AI 工具
-
 | 成员 | AI 编程工具 | 底层模型 | 备注 |
 |------|------------|---------|------|
-| 2412832-王雅枫 | Codex | 6.1sol high | Lab4 工具沿用 Lab3 报告中的记录，待本人确认 |
-| 2413276-胡楚骅 | Codex | 6.1sol high | Lab4 工具沿用 Lab3 报告中的记录，待本人确认 |
+| 2412832-王雅枫 | Codex | 6.1sol high | Lab3 报告中的工具记录 |
+| 2413276-胡楚骅 | Codex | GPT-6 系列 | 模块一实现与验证 |
 | 2412737-罗元伟 | Claude Code（终端 Agent） | Claude Opus 5.5 | 模块三实现、Challenge 实验、整体测试与报告整合 |
 
 **说明：**
@@ -128,20 +122,26 @@ Lab4 起始代码在 Lab2/Lab3 的位置留有空缺，需要先接入此前的�
 
 #### 模块功能描述
 
-**需要实现/修改的函数：**
+Lab2 已实现物理页的分配与回收，本模块在此基础上管理虚拟页与物理页间的映射关系。Sv39 页表记录物理页号和访问权限，引用计数记录物理页被映射的次数，TLB 缓存地址翻译结果。建立、替换和删除映射时，需要同步维护这三部分状态。
+
+**需要实现的函数（`kern/mm/pmm.c`）：**
 
 ```c
-int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm);   // kern/mm/pmm.c
-void page_remove(pde_t *pgdir, uintptr_t la);                                   // kern/mm/pmm.c
+int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm);
+void page_remove(pde_t *pgdir, uintptr_t la);
 ```
 
-**功能说明：**
+**核心接口：**
 
-- `page_insert()` 把物理页 `page` 映射到线性地址 `la`，权限为 `perm`。它先用 `get_pte(pgdir, la, 1)` 找到（必要时建立）叶子页表项，失败返回 `-E_NO_MEM`。
-- `page_remove()` 撤销 `la` 的映射；没有映射时直接返回，是幂等操作。
-- 两者都要保证页表项内容、物理页引用计数和 TLB 三者一致，是 `check_pgdir()`、`check_boot_pgdir()`、评分测试 `[Test PMM]` 以及后续用户地址空间的基础。
+| 接口 | 作用 |
+|---|---|
+| `get_pte(pgdir, la, create)` | 沿三级页表定位叶子表项。create 为 1 时允许按需建立下级页表，为 0 时仅查找 |
+| `pte2page()` | 将有效页表项转换为对应的物理页描述结构 |
+| `page2ppn()`、`pte_create()` | 取得物理页号并编码为带权限和有效位的页表项 |
+| `page_ref_inc()`、`page_ref_dec()` | 增减物理页引用计数 |
+| `free_page()`、`tlb_invalidate()` | 回收物理页、使地址的旧 TLB 翻译失效 |
 
-实现要点：
+**建立与更新映射：`page_insert()`**
 
 ```c
 int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
@@ -152,31 +152,86 @@ int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
     struct Page *old_page = NULL;
     if (*ptep & PTE_V)
         old_page = pte2page(*ptep);
-    if (old_page != page)            // 同一页重复映射时不重复增加引用
+    if (old_page != page)
         page_ref_inc(page);
     *ptep = pte_create(page2ppn(page), perm);
-    tlb_invalidate(pgdir, la);       // sfence.vma la，只刷新这一个地址
+    tlb_invalidate(pgdir, la);
     if (old_page != NULL && old_page != page && page_ref_dec(old_page) == 0)
-        free_page(old_page);         // 被替换的旧页没有其他引用时释放
+        free_page(old_page);
     return 0;
 }
 ```
 
-处理顺序的关键在于先增加新页引用，再写 PTE、刷新 TLB，最后才减少旧页引用。如果 `old_page == page`（例如只修改权限），引用计数保持不变；如果先减后增，同一页的引用计数可能先降为 0 而被误释放。`page_remove()` 则先以 `create = 0` 查找对应页表项，命中后清零 PTE、刷新 TLB，再减少物理页引用计数并在归零时释放。
+函数先定位叶子页表项，定位失败返回 `-E_NO_MEM`。随后检查有效位，取得旧物理页并与目标页比较。新映射需要增加目标页引用，替换映射还需要减少旧页引用。同一物理页的重复映射仅需更新权限，引用数保持不变。写入新 PTE 并使旧 TLB 翻译失效之后，旧页的最后一份引用撤销时才回收该页。
+
+| 原映射 | 操作结果 | 引用计数变化 |
+|---|---|---|
+| 无映射 | 建立新映射 | 目标页 +1 |
+| 指向同一物理页 | 更新权限 | 保持不变 |
+| 指向另一物理页 | 替换物理页及权限 | 目标页 +1、旧页 -1，旧页归零时回收 |
+
+**撤销映射：`page_remove()`**
+
+```c
+void page_remove(pde_t *pgdir, uintptr_t la)
+{
+    pte_t *ptep = get_pte(pgdir, la, 0);
+    if (ptep == NULL || !(*ptep & PTE_V))
+        return;
+    struct Page *page = pte2page(*ptep);
+    *ptep = 0;
+    tlb_invalidate(pgdir, la);
+    if (page_ref_dec(page) == 0)
+        free_page(page);
+}
+```
+
+删除时使用 `create = 0` 查找页表，未建立映射时直接返回。有效映射存在时，先取得旧物理页描述结构，再清除 PTE、使旧 TLB 翻译失效，最后将引用数减一。其他虚拟页仍指向该物理页时继续保留，最后一个引用撤销后释放。重复删除同一映射不会再次改变引用数。
 
 #### 最终提示词
 
-[待补充：由胡楚骅补充模块一实际使用的提示词，并同步记录到 `report/prompt.md`]
+模块一以两个函数为单位设计四段式提示词，完整原文见 [prompt.md 中的模块一](prompt.md#模块一虚拟内存页操作胡楚骅2413276)。
+
+| 提示词组成 | page_insert() | page_remove() |
+|---|---|---|
+| PROMPT | 建立或更新单页映射，处理权限 | 撤销单页映射 |
+| RELY | 定位表项、编码 PTE、引用计数及 TLB 接口 | 查找表项、取得旧页、引用计数及 TLB 接口 |
+| GUARANTEE | 保持指定函数签名，返回成功或内存不足错误码 | 保持指定函数签名，返回类型为 void |
+| SPECIFICATION | 首次映射、同页更新、换页、建表失败四种情况 | 有效映射、无映射、重复删除三种情况 |
 
 #### 实现迭代过程
 
-本模块经过 1 次迭代完成实现，在后续联调和评分测试中，`[Test PMM]` 覆盖了首次映射、同一地址换页、重复映射同一页、修改权限不新增分配以及重复删除等场景，结果为 PASS；`check_pgdir()` 和 `check_boot_pgdir()` 也全部通过。
+1. 依据第一份四段式提示词实现 `page_insert()`，处理新增映射、重复映射、替换和失败返回。
+2. 依据第二份四段式提示词实现 `page_remove()`，处理映射撤销和引用计数回收。
+3. 编译时发现工程使用自定义布尔类型，`get_pte()` 的调用中 `true`、`false` 报未定义。追加修正提示词，将两处参数分别改为 `1`、`0`，沿用工程原有约定。
 
-**最终结果：**
+#### 测试与结果
 
-- ✅ 编译通过
-- ✅ `[Test PMM] PASS`
-- ✅ 功能符合预期
+模块一独立测试使用 WSL 临时工程副本、GCC 15.1.0 和 QEMU 7.0.0。测试副本调整了整数转指针的编译诊断、QEMU 启动映射及读写自检中的非叶子表项权限，随后运行页表自检和评分脚本提供的 PMM 测试。小组整体验证的环境与结果见第五节。
+
+| 测试 | 验证内容 |
+|---|---|
+| `check_pgdir()` | 映射建立、替换、权限更新、引用计数及测试清理后的空闲页数 |
+| `check_boot_pgdir()` | 两个虚拟地址映射同一物理页，一处写入、另一处读回 |
+| `test_lab4_pmm_basic()` | 同页更新时引用数与空闲页数保持不变，连续撤销及重复撤销后引用计数归零 |
+
+以 `check_pgdir()` 的映射操作为例：
+
+| 操作 | 0x0 | 0x1000 | p1 引用数 | p2 引用数 |
+|---|---|---|---:|---:|
+| 建立第一条映射 | p1 | — | 1 | — |
+| 建立第二条映射 | p1 | p2 | 1 | 1 |
+| 替换第二条映射 | p1 | p1 | 2 | 0 |
+| 删除第一条映射 | — | p1 | 1 | 0 |
+| 删除第二条映射 | — | — | 0 | 0 |
+
+测试输出：
+
+```text
+check_pgdir() succeeded!
+check_boot_pgdir() succeeded!
+[Test PMM] PASS
+```
 
 ---
 
