@@ -95,9 +95,101 @@ void print_regs(struct pushregs *gpr)
 
 extern struct mm_struct *check_mm_struct;
 
-//lab3 请补充你在lab3中的代码
+/* trap_insn_len - 计算 epc 处那条指令的字节长度
+ * RISC-V 指令长度由编码的最低几位决定：
+ *   - 最低两位不为 0b11：16 位压缩指令（C 扩展，例如 c.ebreak，2 字节）；
+ *   - 本实验的 32 位指令最低两位为 0b11（例如 ebreak、.word 0x7b）。
+ * 本函数用于当前内核可读地址上的 16/32 位指令。
+ * 由于 C 扩展只保证 2 字节对齐，按 16 位读取低半字，避免越界或非对齐访问。
+ * 不使用 tf->badvaddr(stval)：规范允许非法指令异常时 stval 为 0，不可靠。 */
+static size_t trap_insn_len(uintptr_t epc) {
+    uint16_t low = *(const uint16_t *)epc;
+    return ((low & 0x3) == 0x3) ? 4 : 2;
+}
 
-//lab5 function1 YOUR CODE update exception_handler
+/* interrupt_handler - 处理中断（scause 最高位为 1）
+ * 先去掉 scause 的最高位得到中断编号，再按编号分类：
+ *   - S 态时钟中断：重设下一次时钟事件、计数、按 TICK_NUM 输出；
+ *   - 其他已知中断：只输出类型提示；
+ *   - 无法识别的中断：输出编号并打印完整 trapframe 便于调试。 */
+void interrupt_handler(struct trapframe *tf) {
+    /* 左移一位再右移一位，清掉表示“中断”的最高位，得到中断编号 */
+    intptr_t cause = (tf->cause << 1) >> 1;
+    switch (cause) {
+        case IRQ_U_SOFT:
+            cprintf("User software interrupt\n");
+            break;
+        case IRQ_S_SOFT:
+            cprintf("Supervisor software interrupt\n");
+            break;
+        case IRQ_H_SOFT:
+            cprintf("Hypervisor software interrupt\n");
+            break;
+        case IRQ_M_SOFT:
+            cprintf("Machine software interrupt\n");
+            break;
+        case IRQ_U_TIMER:
+            cprintf("User timer interrupt\n");
+            break;
+        case IRQ_S_TIMER:
+            /* 设置下一次到期时刻，持续产生时钟事件。 */
+            clock_set_next_event();
+            /* lab5：每 TICK_NUM 次时钟中断请求一次重新调度，由 trap() 在返回用户态前执行 schedule()。 */
+            if (++ticks % TICK_NUM == 0) {
+                assert(current);
+                current->need_resched = 1;
+            }
+            break;
+        case IRQ_H_TIMER:
+            cprintf("Hypervisor timer interrupt\n");
+            break;
+        case IRQ_M_TIMER:
+            cprintf("Machine timer interrupt\n");
+            break;
+        case IRQ_U_EXT:
+            cprintf("User external interrupt\n");
+            break;
+        case IRQ_S_EXT:
+            cprintf("Supervisor external interrupt\n");
+            break;
+        case IRQ_H_EXT:
+            cprintf("Hypervisor external interrupt\n");
+            break;
+        case IRQ_M_EXT:
+            cprintf("Machine external interrupt\n");
+            break;
+        default:
+            /* 无法识别的中断：输出编号，并打印完整现场作为兜底 */
+            cprintf("Unknown interrupt: cause %d\n", (int)cause);
+            print_trapframe(tf);
+            break;
+    }
+}
+
+
+/* exception_handler - 处理异常（scause 最高位为 0）
+ * lab3 部分：非法指令、断点只输出类型与地址，并按指令长度推进 epc，避免 sret 后死循环。
+ * lab5 部分（YOUR CODE）：需要在这里增加 CAUSE_USER_ECALL 分支（epc 前移 4 字节后调用 syscall()），
+ *                       以及 kernel_execve 使用的 ebreak 路径（若采用）。 */
+void exception_handler(struct trapframe *tf) {
+    switch (tf->cause) {
+        case CAUSE_ILLEGAL_INSTRUCTION:
+            cprintf("Exception type: Illegal instruction\n");
+            cprintf("Illegal instruction at 0x%016lx\n", tf->epc);
+            tf->epc += trap_insn_len(tf->epc);
+            break;
+        case CAUSE_BREAKPOINT:
+            cprintf("Exception type: Breakpoint\n");
+            cprintf("Breakpoint at 0x%016lx\n", tf->epc);
+            tf->epc += trap_insn_len(tf->epc);
+            break;
+        //lab5 function1 YOUR CODE: case CAUSE_USER_ECALL
+        default:
+            print_trapframe(tf);
+            break;
+    }
+}
+
 
 
 static inline void trap_dispatch(struct trapframe *tf)

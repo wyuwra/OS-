@@ -13,11 +13,11 @@ struct mm_struct;
 // addr belong to a vma means  vma.vm_start<= addr <vma.vm_end
 struct vma_struct
 {
-    struct mm_struct *vm_mm; // the set of vma using the same PDT
-    uintptr_t vm_start;      // start addr of vma
-    uintptr_t vm_end;        // end addr of vma, not include the vm_end itself
-    uint32_t vm_flags;       // flags of vma
-    list_entry_t list_link;  // linear list link which sorted by start addr of vma
+    struct mm_struct *vm_mm; // 所属的 mm
+    uintptr_t vm_start;      // 起始地址
+    uintptr_t vm_end;        // 结束地址（不含）
+    uint32_t vm_flags;       // 权限：VM_READ / VM_WRITE / VM_EXEC
+    list_entry_t list_link;  // 串进 mmap_list
 };
 
 #define le2vma(le, member) \
@@ -31,11 +31,11 @@ struct vma_struct
 // the control struct for a set of vma using the same PDT
 struct mm_struct
 {
-    list_entry_t mmap_list;        // linear list link which sorted by start addr of vma
-    struct vma_struct *mmap_cache; // current accessed vma, used for speed purpose
-    pde_t *pgdir;                  // the PDT of these vma
-    int map_count;                 // the count of these vma
-    void *sm_priv;                 // the private data for swap manager
+    list_entry_t mmap_list;        // VMA 链表（按起始地址排序）
+    struct vma_struct *mmap_cache; // 最近访问的 VMA，加速查找
+    pde_t *pgdir;                  // 这个地址空间的页表根
+    int map_count;                 // VMA 个数
+    void *sm_priv;                 // 页面置换算法的私有数据（后续实验用）
     int mm_count;                  // the number ofprocess which shared the mm
     lock_t mm_lock;                // mutex for using dup_mmap fun to duplicat the mm
 };
