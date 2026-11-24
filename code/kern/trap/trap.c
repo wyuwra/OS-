@@ -169,8 +169,10 @@ void interrupt_handler(struct trapframe *tf) {
 
 /* exception_handler - 处理异常（scause 最高位为 0）
  * lab3 部分：非法指令、断点只输出类型与地址，并按指令长度推进 epc，避免 sret 后死循环。
- * lab5 部分（YOUR CODE）：需要在这里增加 CAUSE_USER_ECALL 分支（epc 前移 4 字节后调用 syscall()），
- *                       以及 kernel_execve 使用的 ebreak 路径（若采用）。 */
+ * lab5 部分：CAUSE_USER_ECALL 分支把 epc 前移 4 字节后调用 syscall()；
+ *           用户态访存异常终止当前进程，内核态访存异常 panic。
+ *           骨架未提供 kernel_execve_ret，kernel_execve 采用“构造 trapframe 后跳 __trapret”
+ *           方案，因此断点分支保持 lab3 行为，不承担 ebreak 系统调用路径。 */
 void exception_handler(struct trapframe *tf) {
     switch (tf->cause) {
         case CAUSE_ILLEGAL_INSTRUCTION:
@@ -183,7 +185,34 @@ void exception_handler(struct trapframe *tf) {
             cprintf("Breakpoint at 0x%016lx\n", tf->epc);
             tf->epc += trap_insn_len(tf->epc);
             break;
-        //lab5 function1 YOUR CODE: case CAUSE_USER_ECALL
+        //lab5 function1 2412737: case CAUSE_USER_ECALL
+        case CAUSE_USER_ECALL:
+            /* 用户态 ecall：sepc 指向 ecall 本身（固定 4 字节，无压缩形式）。
+             * 必须在 syscall() 之前前移：sys_fork 会复制当前 trapframe，
+             * 子进程也要从 ecall 的下一条指令继续执行；否则返回后会重复 ecall。 */
+            tf->epc += 4;
+            syscall();
+            break;
+        case CAUSE_FETCH_PAGE_FAULT:
+        case CAUSE_LOAD_PAGE_FAULT:
+        case CAUSE_STORE_PAGE_FAULT:
+        case CAUSE_FETCH_ACCESS:
+        case CAUSE_LOAD_ACCESS:
+        case CAUSE_STORE_ACCESS:
+            /* 本实验未实现按需调页：访存异常若来自用户态，说明用户程序访问了非法地址
+             * （例如 faultread 读 0 地址、faultreadkernel 读内核地址），只终止该进程；
+             * 置 PF_EXITING 后由 trap() 在返回用户态前统一调用 do_exit(-E_KILLED)。
+             * 若来自内核态，属于内核错误，直接 panic，避免无限重入同一条指令。 */
+            if (!trap_in_kernel(tf) && current != NULL) {
+                cprintf("user memory fault: cause %d, addr 0x%016lx, epc 0x%016lx, pid %d, killed by kernel.\n",
+                        (int)tf->cause, tf->tval, tf->epc, current->pid);
+                current->flags |= PF_EXITING;
+            } else {
+                print_trapframe(tf);
+                panic("unhandled kernel memory fault: cause %d, addr 0x%016lx\n",
+                      (int)tf->cause, tf->tval);
+            }
+            break;
         default:
             print_trapframe(tf);
             break;
@@ -192,49 +221,62 @@ void exception_handler(struct trapframe *tf) {
 
 
 
+/* trap_dispatch - 按 scause 最高位区分中断与异常，分别交给对应的处理函数。
+ * scause 最高位为 1 是中断（时钟等），为 0 是异常（含用户态 ecall）。 */
 static inline void trap_dispatch(struct trapframe *tf)
 {
     if ((intptr_t)tf->cause < 0)
     {
-        // interrupts
+        // 中断
         interrupt_handler(tf);
     }
     else
     {
-        // exceptions
+        // 异常
         exception_handler(tf);
     }
 }
 
-/* *
- * trap - handles or dispatches an exception/interrupt. if and when trap() returns,
- * the code in kern/trap/trapentry.S restores the old CPU state saved in the
- * trapframe and then uses the iret instruction to return from the exception.
- * */
+/* trap - 所有trap的 C 语言总入口，由 trapentry.S 中 __alltraps 在 SAVE_ALL 之后调用，
+ * 参数 tf 指向 SAVE_ALL 刚在内核栈上保存的 trapframe。
+ * trap() 返回后，__trapret 会用 RESTORE_ALL 恢复 trapframe 中的现场，再 sret 返回。
+ *
+ * lab5 的关键点：
+ *   1. current->tf 必须指向“本次陷入”的 trapframe。syscall()、sys_fork 等都通过
+ *      current->tf 读写用户寄存器（调用号、参数、返回值 a0）。
+ *   2. 处理期间可能发生嵌套陷入（内核态又触发异常），所以先保存旧的 tf，处理完再还原。
+ *   3. 只有“来自用户态”的陷入，才在返回前检查 PF_EXITING 与 need_resched：
+ *      内核态被打断时不能随意退出或切换进程，否则会破坏内核正在执行的临界操作。 */
 void trap(struct trapframe *tf)
 {
-    // dispatch based on what type of trap occurred
-    //    cputs("some trap");
+    // 启动早期还没有当前进程（current 为空），直接分发即可
     if (current == NULL)
     {
         trap_dispatch(tf);
     }
     else
     {
+        // 保存旧的 tf，并让 current->tf 指向本次陷入的 trapframe
         struct trapframe *otf = current->tf;
         current->tf = tf;
 
+        // 在分发前记录陷入来源：SPP=1 为内核态，SPP=0 为用户态
         bool in_kernel = trap_in_kernel(tf);
 
+        // 处理中断或异常；用户态 ecall 会在这里进入 syscall()
         trap_dispatch(tf);
 
+        // 还原嵌套前的 tf
         current->tf = otf;
         if (!in_kernel)
         {
+            // 进程被 kill（do_kill 置位）或在处理中被标记退出（如用户态访存错误）：
+            // 在返回用户态之前真正退出，不再回到用户程序
             if (current->flags & PF_EXITING)
             {
                 do_exit(-E_KILLED);
             }
+            // 时间片用完（时钟中断置位）或主动 yield：让出 CPU
             if (current->need_resched)
             {
                 schedule();

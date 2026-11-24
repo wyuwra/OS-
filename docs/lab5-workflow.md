@@ -32,19 +32,19 @@
 
 ### lab5 功能
 
-- [ ] `RESTORE_ALL`：扩充为用户态与内核态双向返回（恢复 `sstatus`、`sepc`，按 `SPP` 决定 `sscratch`）
-- [ ] `exception_handler`：处理 `CAUSE_USER_ECALL`，`epc += 4`，转交 `syscall`
-- [ ] 若骨架使用 `ebreak` 进入 `kernel_execve` 路径，处理 `CAUSE_BREAKPOINT` 分支，与 C 对接
-- [ ] `syscall()`：取调用号与参数，边界检查，调用分发表，返回值写回 `a0`
-- [ ] `sys_exit`
-- [ ] `sys_fork`
-- [ ] `sys_wait`
-- [ ] `sys_exec`
-- [ ] `sys_yield`
-- [ ] `sys_kill`
-- [ ] `sys_getpid`
-- [ ] `sys_putc`
-- [ ] `sys_pgdir`
+- [x] `RESTORE_ALL`：扩充为用户态与内核态双向返回（恢复 `sstatus`、`sepc`，按 `SPP` 决定 `sscratch`）
+- [x] `exception_handler`：处理 `CAUSE_USER_ECALL`，`epc += 4`，转交 `syscall`
+- [x] 若骨架使用 `ebreak` 进入 `kernel_execve` 路径，处理 `CAUSE_BREAKPOINT` 分支，与 C 对接
+- [x] `syscall()`：取调用号与参数，边界检查，调用分发表，返回值写回 `a0`
+- [x] `sys_exit`
+- [x] `sys_fork`
+- [x] `sys_wait`
+- [x] `sys_exec`
+- [x] `sys_yield`
+- [x] `sys_kill`
+- [x] `sys_getpid`
+- [x] `sys_putc`
+- [x] `sys_pgdir`
 
 ### 分支任务 gdb
 
