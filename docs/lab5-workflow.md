@@ -69,9 +69,11 @@
 - [ ] `copy_range`（`pmm.c`）：按页复制内容并建立新映射，保持权限位
 - [ ] `dup_mmap`（`vmm.c`）：按 vma 复制，保持顺序与权限
 - [ ] `copy_mm`（`proc.c`）：区分共享与复制，处理 `mm` 引用计数
-- [ ] `load_icode`（`proc.c`）：解析 ELF、建立 vma、装入段、清 BSS、建用户栈、设置 trapframe
-- [ ] `do_execve`（`proc.c`）：先回收旧 `mm`，再调用 `load_icode`
+- [x] `load_icode`（`proc.c`）：校验 ELF、映射程序段并清零 BSS、建立用户栈、设置首次进入用户态的 trapframe
+- [x] `do_execve`（`proc.c`）：检查输入，换页表前保存用户态传入的 ELF，释放对旧 `mm` 的引用，再调用 `load_icode`
 - [ ] 核对已有的 `user_mem_check`、`exit_mmap` 在新流程下行为正确
+
+装载部分已编译并在临时 QEMU 副本中验证。使用临时启动入口和退出处理，`hello` 与 `testbss` 都进入了用户态，覆盖了 BSS 清零、退出后的页表回收以及分配失败回滚。本次修正了 `exit_range()` 对中间页表目录为空的判断。M1 整组联调与完整评分待 C 线接入后进行。
 
 ### 问答与挑战
 

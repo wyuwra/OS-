@@ -479,7 +479,308 @@ bad_fork_cleanup_proc:
 
 
 
-//lab5 function2 YOUR CODE
+//lab5 function2 2412832
+static int load_icode(unsigned char *binary, size_t size);
+
+// exec 需要实际读取这些字节。用户区间除了属于可读 VMA，还要有可读的页映射。
+static bool
+exec_input_readable(struct mm_struct *mm, const void *buffer, size_t length)
+{
+    uintptr_t start = (uintptr_t)buffer;
+    if (length > (uintptr_t)-1 - start || !user_mem_check(mm, start, length, 0))
+    {
+        return 0;
+    }
+
+    if (mm != NULL)
+    {
+        const pte_t required = PTE_V | PTE_U | PTE_R;
+        uintptr_t end = start + length;
+        for (uintptr_t va = ROUNDDOWN(start, PGSIZE); va < end; va += PGSIZE)
+        {
+            pte_t *ptep = get_pte(mm->pgdir, va, 0);
+            if (ptep == NULL || (*ptep & required) != required)
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int
+do_execve(const char *name, size_t len, unsigned char *binary, size_t size)
+{
+    struct mm_struct *old_mm = current->mm;
+    bool replacing_user_image = old_mm != NULL;
+    char proc_name[PROC_NAME_LEN + 1] = {0};
+    size_t name_len = len < PROC_NAME_LEN ? len : PROC_NAME_LEN;
+    struct Page *image_pages = NULL;
+    size_t image_npages = 0;
+
+    lock_mm(old_mm);
+    if (!exec_input_readable(old_mm, binary, size) ||
+        (name_len != 0 && !exec_input_readable(old_mm, name, name_len)))
+    {
+        unlock_mm(old_mm);
+        return -E_INVAL;
+    }
+    if (name_len != 0)
+    {
+        memcpy(proc_name, name, name_len);
+    }
+
+    // 用户传入的 ELF 位于旧页表中，先复制到切换页表后仍可访问的内核内存。
+    // 首次从内核线程启动用户程序时，嵌入内核的 ELF 可以直接使用。
+    if (replacing_user_image)
+    {
+        image_npages = ROUNDUP(size, PGSIZE) / PGSIZE;
+        image_pages = alloc_pages(image_npages);
+        if (image_pages == NULL)
+        {
+            unlock_mm(old_mm);
+            return -E_NO_MEM;
+        }
+        unsigned char *image = page2kva(image_pages);
+        memcpy(image, binary, size);
+        binary = image;
+    }
+    unlock_mm(old_mm);
+
+    if (replacing_user_image)
+    {
+        // 先切回内核根页表，再解除当前进程对旧地址空间的引用。
+        bool intr_flag;
+        local_intr_save(intr_flag);
+        lsatp(boot_pgdir_pa);
+        flush_tlb();
+        current->pgdir = boot_pgdir_pa;
+        current->mm = NULL;
+        int remaining = mm_count_dec(old_mm);
+        local_intr_restore(intr_flag);
+
+        if (remaining == 0)
+        {
+            exit_mmap(old_mm);
+            put_pgdir(old_mm);
+            mm_destroy(old_mm);
+        }
+    }
+
+    int ret = load_icode(binary, size);
+    if (image_pages != NULL)
+    {
+        free_pages(image_pages, image_npages);
+    }
+    if (ret != 0)
+    {
+        // 旧用户映像已解除，进程必须退出；首次内核装载失败可交给调用者处理。
+        return replacing_user_image ? do_exit(ret) : ret;
+    }
+    set_proc_name(current, proc_name);
+    return 0;
+}
+
+//lab5 function2 2412832
+static int
+load_elf_segment(struct mm_struct *mm, const unsigned char *binary,
+                 size_t size, const struct proghdr *ph)
+{
+    if (ph->p_filesz > ph->p_memsz || ph->p_offset > size ||
+        ph->p_filesz > size - ph->p_offset)
+    {
+        return -E_INVAL_ELF;
+    }
+    if (ph->p_memsz == 0)
+    {
+        return 0;
+    }
+
+    // 在计算段尾之前检查长度，并给用户栈保留独立的地址区间。
+    const uintptr_t stack_bottom = USTACKTOP - USTACKSIZE;
+    uintptr_t start = ph->p_va;
+    if (start < USERBASE || start >= stack_bottom || ph->p_memsz > stack_bottom - start)
+    {
+        return -E_INVAL_ELF;
+    }
+    uintptr_t page_start = ROUNDDOWN(start, PGSIZE);
+    uintptr_t page_end = ROUNDUP(start + ph->p_memsz, PGSIZE);
+
+    // mm_map() 以页为单位登记 VMA，装载前检查该页区间是否与已有段重叠。
+    list_entry_t *head = &mm->mmap_list;
+    for (list_entry_t *le = list_next(head); le != head; le = list_next(le))
+    {
+        struct vma_struct *vma = le2vma(le, list_link);
+        if (page_end <= vma->vm_start)
+        {
+            break;
+        }
+        if (page_start < vma->vm_end)
+        {
+            return -E_INVAL_ELF;
+        }
+    }
+
+    uint32_t vm_flags = 0;
+    uint32_t perm = PTE_U;
+    if (ph->p_flags & (ELF_PF_R | ELF_PF_W))
+    {
+        // RISC-V 的可写叶子页表项同时需要读权限。
+        vm_flags |= VM_READ;
+        perm |= PTE_R;
+    }
+    if (ph->p_flags & ELF_PF_W)
+    {
+        vm_flags |= VM_WRITE;
+        perm |= PTE_W;
+    }
+    if (ph->p_flags & ELF_PF_X)
+    {
+        vm_flags |= VM_EXEC;
+        perm |= PTE_X;
+    }
+    if (vm_flags == 0)
+    {
+        return -E_INVAL_ELF;
+    }
+
+    int ret = mm_map(mm, start, ph->p_memsz, vm_flags, NULL);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    uintptr_t file_end = start + ph->p_filesz;
+    for (uintptr_t va = page_start; va < page_end; va += PGSIZE)
+    {
+        struct Page *page = pgdir_alloc_page(mm->pgdir, va, perm);
+        if (page == NULL)
+        {
+            return -E_NO_MEM;
+        }
+        // 整页清零，再经内核直映地址复制文件覆盖的字节，剩下的 BSS 保持为零。
+        unsigned char *kva = page2kva(page);
+        memset(kva, 0, PGSIZE);
+        uintptr_t copy_start = va < start ? start : va;
+        uintptr_t copy_end = va + PGSIZE < file_end ? va + PGSIZE : file_end;
+        if (copy_start < copy_end)
+        {
+            memcpy(kva + (copy_start - va), binary + ph->p_offset + (copy_start - start),
+                   copy_end - copy_start);
+        }
+    }
+    return 0;
+}
+
+static int
+load_icode(unsigned char *binary, size_t size)
+{
+    enum { ELFCLASS64 = 2, ELFDATA2LSB = 1, EV_CURRENT = 1, ET_EXEC = 2, EM_RISCV = 243 };
+    if (current->mm != NULL || current->tf == NULL)
+    {
+        return -E_INVAL;
+    }
+    if (binary == NULL || size < sizeof(struct elfhdr))
+    {
+        return -E_INVAL_ELF;
+    }
+
+    // ELF 字节的起始地址不保证按结构体对齐，复制到局部变量后再读头部。
+    struct elfhdr elf;
+    memcpy(&elf, binary, sizeof(elf));
+    if (elf.e_magic != ELF_MAGIC || elf.e_elf[0] != ELFCLASS64 ||
+        elf.e_elf[1] != ELFDATA2LSB || elf.e_elf[2] != EV_CURRENT ||
+        elf.e_type != ET_EXEC || elf.e_machine != EM_RISCV || elf.e_version != EV_CURRENT ||
+        elf.e_ehsize != sizeof(elf) || elf.e_phentsize != sizeof(struct proghdr) ||
+        elf.e_phoff < sizeof(elf) || elf.e_phoff > size || elf.e_phnum == 0 ||
+        elf.e_phnum > (size - elf.e_phoff) / sizeof(struct proghdr) || (elf.e_entry & 1))
+    {
+        return -E_INVAL_ELF;
+    }
+
+    struct mm_struct *mm = mm_create();
+    if (mm == NULL)
+    {
+        return -E_NO_MEM;
+    }
+    int ret = setup_pgdir(mm);
+    if (ret != 0)
+    {
+        goto bad_mm;
+    }
+
+    bool entry_is_executable = 0;
+    for (size_t i = 0; i < elf.e_phnum; i++)
+    {
+        struct proghdr ph;
+        memcpy(&ph, binary + elf.e_phoff + i * sizeof(ph), sizeof(ph));
+        if (ph.p_type != ELF_PT_LOAD)
+        {
+            continue;
+        }
+        ret = load_elf_segment(mm, binary, size, &ph);
+        if (ret != 0)
+        {
+            goto bad_pgdir;
+        }
+        if ((ph.p_flags & ELF_PF_X) && elf.e_entry >= ph.p_va &&
+            elf.e_entry - ph.p_va < ph.p_memsz)
+        {
+            entry_is_executable = 1;
+        }
+    }
+    if (!entry_is_executable)
+    {
+        ret = -E_INVAL_ELF;
+        goto bad_pgdir;
+    }
+
+    // 当前实验不按需调页，预先映射可用的用户栈空间，留出底部保护页。
+    uintptr_t stack_bottom = USTACKTOP - USTACKSIZE;
+    ret = mm_map(mm, stack_bottom, USTACKSIZE, VM_READ | VM_WRITE | VM_STACK, NULL);
+    if (ret != 0)
+    {
+        goto bad_pgdir;
+    }
+    for (uintptr_t va = stack_bottom + PGSIZE; va < USTACKTOP; va += PGSIZE)
+    {
+        struct Page *page = pgdir_alloc_page(mm->pgdir, va, PTE_U | PTE_R | PTE_W);
+        if (page == NULL)
+        {
+            ret = -E_NO_MEM;
+            goto bad_pgdir;
+        }
+        memset(page2kva(page), 0, PGSIZE);
+    }
+
+    // 装载成功后一次性交付新地址空间和用户态现场。
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    struct trapframe *tf = current->tf;
+    uintptr_t status = read_csr(sstatus);
+    memset(tf, 0, sizeof(*tf));
+    tf->gpr.sp = USTACKTOP;
+    tf->epc = elf.e_entry;
+    tf->status = (status | SSTATUS_SPIE) & ~(SSTATUS_SPP | SSTATUS_SIE);
+
+    mm_count_inc(mm);
+    current->mm = mm;
+    current->pgdir = PADDR(mm->pgdir);
+    lsatp(current->pgdir);
+    flush_tlb();
+    asm volatile("fence.i" ::: "memory");
+    local_intr_restore(intr_flag);
+    return 0;
+
+bad_pgdir:
+    exit_mmap(mm);
+    put_pgdir(mm);
+bad_mm:
+    mm_destroy(mm);
+    return ret;
+}
+
+//lab5 function2 YOUR CODE: C 线的模块二函数待补充
 
 
 //lab5 function3 YOUR CODE
