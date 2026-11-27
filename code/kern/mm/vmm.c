@@ -152,17 +152,23 @@ void insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma)
     mm->map_count++;
 }
 
-// mm_destroy - free mm and mm internal fields
-void mm_destroy(struct mm_struct *mm)
+static void free_vmas(struct mm_struct *mm)
 {
-    assert(mm_count(mm) == 0);
-
     list_entry_t *list = &(mm->mmap_list), *le;
     while ((le = list_next(list)) != list)
     {
         list_del(le);
         kfree(le2vma(le, list_link)); // kfree vma
     }
+    mm->mmap_cache = NULL;
+    mm->map_count = 0;
+}
+
+// mm_destroy - free mm and mm internal fields
+void mm_destroy(struct mm_struct *mm)
+{
+    assert(mm_count(mm) == 0);
+    free_vmas(mm);
     kfree(mm); // kfree mm
     mm = NULL;
 }
@@ -202,9 +208,46 @@ out:
     return ret;
 }
 
-//lab5 function3 YOUR CODE 
+//lab5 function3 2412832
+// 调用者持有 from 的 mm_lock，to 是已分配独立根页表的新地址空间。
+int dup_mmap(struct mm_struct *to, struct mm_struct *from)
+{
+    if (to == NULL || from == NULL || to->pgdir == NULL || from->pgdir == NULL ||
+        to->pgdir == from->pgdir || mm_count(to) != 0 || !list_empty(&to->mmap_list))
+    {
+        return -E_INVAL;
+    }
 
+    int ret;
+    list_entry_t *list = &from->mmap_list;
+    // 从高地址往低地址复制，每次从链表头插入，最终仍按地址递增排列。
+    for (list_entry_t *le = list_prev(list); le != list; le = list_prev(le))
+    {
+        struct vma_struct *src = le2vma(le, list_link);
+        struct vma_struct *dst = vma_create(src->vm_start, src->vm_end, src->vm_flags);
+        if (dst == NULL)
+        {
+            ret = -E_NO_MEM;
+            goto failed;
+        }
 
+        // 复制实际映射的页，空洞和栈保护页继续保持未映射。
+        ret = copy_range(to->pgdir, from->pgdir, src->vm_start, src->vm_end, 0);
+        if (ret != 0)
+        {
+            kfree(dst);
+            goto failed;
+        }
+        insert_vma_struct(to, dst);
+    }
+    return 0;
+
+failed:
+    // 当前区间由 copy_range 回滚，这里清理此前已复制成功的区间。
+    exit_mmap(to);
+    free_vmas(to);
+    return ret;
+}
 
 void exit_mmap(struct mm_struct *mm)
 {

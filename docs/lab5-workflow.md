@@ -19,7 +19,7 @@
 - [ ] `do_fork`（C）复制 trapframe 后令子进程 `a0 = 0`、`sp` 指向新栈，由 C 写、A 复核
 - [ ] `do_wait` 与 `do_exit`（均归 C）的状态位约定：`PROC_ZOMBIE`、`WT_CHILD`、`PF_EXITING`
 - [ ] 系统调用参数约定：`a0` 为调用号，`a1`~`a5` 为参数，返回值写回 `tf->gpr.a0`（A）
-- [ ] `proc.c` 由 B、C 同时修改，约定 B 只动 `copy_mm`、`load_icode`、`do_execve`，C 动其余部分，减少合并冲突
+- [ ] `proc.c` 由 B、C 同时修改。B 负责 `copy_mm`、`load_icode`、`do_execve`。C 合并 `do_fork` 时保留 `copy_mm` 成功后、进程登记失败时的地址空间回收
 
 ## A：特权级边界线
 
@@ -56,24 +56,29 @@
 
 ## B：地址空间线
 
-涉及文件：`kern/mm/default_pmm.c`、`kern/mm/pmm.c`、`kern/mm/vmm.c`、`kern/process/proc.c`（仅三个函数）
+涉及文件 `kern/mm/default_pmm.c`、`kern/mm/pmm.c`、`kern/mm/vmm.c` 和 `kern/process/proc.c`。
 
 ### 承接的前序实验代码
 
 - [x] `default_pmm.c` 中 lab2 遗留（骨架约 L6）
 - [x] `pmm.c` 中 lab2 遗留（骨架约 L90）
-- [x] `pmm.c` 中 lab4 遗留（骨架约 L324，位于 `copy_range` 占位之后）
+- [x] `pmm.c` 中 lab4 遗留的页表映射代码
 
 ### lab5 功能
 
-- [ ] `copy_range`（`pmm.c`）：按页复制内容并建立新映射，保持权限位
-- [ ] `dup_mmap`（`vmm.c`）：按 vma 复制，保持顺序与权限
-- [ ] `copy_mm`（`proc.c`）：区分共享与复制，处理 `mm` 引用计数
+- [x] `copy_range`（`pmm.c`）逐页复制内容并保留映射权限。临时 QEMU 测试验证了父子页独立、空洞保留和 10 个分配失败点的回收。
+- [x] `dup_mmap`（`vmm.c`）复制 VMA 及其映射，保持区间顺序、权限和栈保护页。测试覆盖了 VMA、物理页和页表的分配失败，以及回滚后重试。
+- [x] `copy_mm`（`proc.c`）覆盖内核线程、`CLONE_VM` 共享和普通 `fork` 独立复制。测试覆盖了 8 个分配失败点，以及 `do_fork` 在复制后达到进程数上限时对独立 `mm` 或共享引用的回收。
 - [x] `load_icode`（`proc.c`）：校验 ELF、映射程序段并清零 BSS、建立用户栈、设置首次进入用户态的 trapframe
 - [x] `do_execve`（`proc.c`）：检查输入，换页表前保存用户态传入的 ELF，释放对旧 `mm` 的引用，再调用 `load_icode`
-- [ ] 核对已有的 `user_mem_check`、`exit_mmap` 在新流程下行为正确
 
-装载部分已编译并在临时 QEMU 副本中验证。使用临时启动入口和退出处理，`hello` 与 `testbss` 都进入了用户态，覆盖了 BSS 清零、退出后的页表回收以及分配失败回滚。本次修正了 `exit_range()` 对中间页表目录为空的判断。M1 整组联调与完整评分待 C 线接入后进行。
+装载部分已编译并在临时 QEMU 副本中验证。使用临时启动入口和退出处理，`hello` 与 `testbss` 都进入了用户态，覆盖了 BSS 清零、退出后的页表回收以及分配失败回滚。`exit_range()` 已修正中间页表目录的判空逻辑。
+
+### B 线剩余任务
+
+- [ ] 提交本地 `copy_range`、`dup_mmap` 和 `copy_mm` 的改动，并推送到远程 `lab5`，供 C 线接入。
+- [ ] 等 C 线接好进程启动和 `fork`、`exit`、`wait` 后，参与 M1–M3 联调。用 `forktest` 和 `forktree` 验证完整复制与回收流程，用 `badarg` 核对 `user_mem_check` 对非法 `waitpid` 指针的拦截，并确认 `exit_mmap` 在进程退出及地址空间最后一个引用释放时正确回收。最后跑 `make grade`。
+- [ ] 补写 B 线的 `report/report.md` 内容，说明 ELF 装载、地址空间复制和失败回滚。按提交要求汇总 B 线提示词到 `report/prompt.md`，联调后补齐对应截图。
 
 ### 问答与挑战
 
@@ -110,7 +115,7 @@
 
 - [ ] M0：三人把前序实验遗留代码补完并合并，`make qemu` 能启动到 idle，时钟中断正常（等价于 lab4 回归）
 - [ ] M1：第一个用户程序 `hello` 能从用户态输出，`ecall` 能返回（A、B、C 的 `init_main`、`user_main`、`kernel_execve`、`load_icode`、`RESTORE_ALL`、`sys_putc` 联调）
-- [ ] M2：`exit`、`yield`、`forktest`、`waitkill` 全部通过（C 的状态机加 B 的 `copy_range` 联调）
+- [ ] M2：`exit`、`yield`、`forktest`、`waitkill` 全部通过（联调 C 的进程生命周期和 B 的 `copy_mm` → `dup_mmap` → `copy_range`）
 - [ ] M3：`make grade` 全部通过（`forktree`、`spin`、`testbss`、`badarg`、`badsegment`、`divzero`、`faultread`、`faultreadkernel`、`softint` 也要覆盖）
 - [ ] M4：gdb 分支任务完成，可选 COW 完成
 

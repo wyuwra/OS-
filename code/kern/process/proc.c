@@ -375,21 +375,56 @@ put_pgdir(struct mm_struct *mm)
     free_page(kva2page(mm->pgdir));
 }
 
-//lab5 function3 YOUR CODE update copy_mm（以下为 lab4 版本，仅支持无用户地址空间的内核线程，需要扩充为复制/共享用户 mm）
+//lab5 function3 2412832
 static int
 copy_mm(uint32_t clone_flags, struct proc_struct *proc)
-{   // 处理线程使用的地址空间
-    // clone_flags 为后续共享或复制用户地址空间预留，本实验暂不区分。
-    (void)clone_flags;
+{
+    assert(current != NULL && proc != NULL && proc->mm == NULL);
 
-    // 当前阶段只创建内核线程；若出现用户 mm，应先补充地址空间处理，
-    // 不能直接返回成功，让一个未处理的用户进程继续进入创建流程。
-    assert(current != NULL && current->mm == NULL);
-    assert(proc != NULL && proc->mm == NULL);
+    struct mm_struct *parent_mm = current->mm;
+    if (parent_mm == NULL)
+    {
+        // 父进程是内核线程，沿用 alloc_proc() 设置的启动页表。
+        return 0;
+    }
 
-    // alloc_proc() 已将新 PCB 的 mm 置空，并设置了内核页表 pgdir。
-    // mm 为空表示没有独立用户地址空间，内核页表映射仍然有效。
-    // 因此这里不分配页表、不复制页面，也不改变现有 pgdir，直接成功返回。
+    // CLONE_VM 直接共享父进程的 mm。普通 fork 建立独立的用户地址空间。
+    struct mm_struct *mm = parent_mm;
+    if (!(clone_flags & CLONE_VM))
+    {
+        if ((mm = mm_create()) == NULL)
+        {
+            return -E_NO_MEM;
+        }
+        int ret = setup_pgdir(mm);
+        if (ret != 0)
+        {
+            mm_destroy(mm);
+            return ret;
+        }
+
+        // 复制期间锁住父 mm，保证 VMA 和对应映射在遍历期间一致。
+        lock_mm(parent_mm);
+        ret = dup_mmap(mm, parent_mm);
+        unlock_mm(parent_mm);
+        if (ret != 0)
+        {
+            // dup_mmap() 已回收部分复制的 VMA 和用户页。
+            put_pgdir(mm);
+            mm_destroy(mm);
+            return ret;
+        }
+        // 新物理页可能存有用户指令，确保后续取指能看到复制后的内容。
+        asm volatile("fence.i" ::: "memory");
+    }
+
+    // 地址空间就绪后再登记引用，并为 proc_run() 保存根页表物理地址。
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    mm_count_inc(mm);
+    proc->mm = mm;
+    proc->pgdir = PADDR(mm->pgdir);
+    local_intr_restore(intr_flag);
     return 0;
 }
 
@@ -421,7 +456,7 @@ copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf)
 int
 do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
 {   // 完成申请PCB和内核栈->准备地址空间与现场->分配PID->登记并唤醒线程，失败时释放已申请的资源。
-    // 当前阶段只从已有内核线程创建子线程，初始现场由调用者提供。
+    // 初始现场由调用者提供，子进程的地址空间由 copy_mm() 准备。
     assert(current != NULL && tf != NULL);
     if (nr_process >= MAX_PROCESS)
     {
@@ -454,7 +489,16 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
     // 资源准备期间可能被中断，因此在登记前再次检查数量上限。
     if (nr_process >= MAX_PROCESS)
     {
+        // copy_mm() 已登记一次引用。撤销引用后，只有最后一个持有者回收 mm。
+        struct mm_struct *mm = proc->mm;
+        bool release_mm = mm != NULL && mm_count_dec(mm) == 0;
         local_intr_restore(intr_flag);
+        if (release_mm)
+        {
+            exit_mmap(mm);
+            put_pgdir(mm);
+            mm_destroy(mm);
+        }
         ret = -E_NO_FREE_PROC;
         goto bad_fork_cleanup_kstack;
     }

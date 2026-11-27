@@ -413,7 +413,81 @@ void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end)
 }
 
 
-//lab5 function3 YOUR CODE 
+//lab5 function3 2412832
+int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share)
+{
+    if (to == NULL || from == NULL || to == from ||
+        start % PGSIZE != 0 || end % PGSIZE != 0 || !USER_ACCESS(start, end))
+    {
+        return -E_INVAL;
+    }
+
+    // 先确认目标区间为空，避免覆盖已有映射，也保证失败时可以按区间回收。
+    for (uintptr_t va = start; va < end;)
+    {
+        pte_t *ptep = get_pte(to, va, 0);
+        if (ptep == NULL)
+        {
+            va = ROUNDDOWN(va + PTSIZE, PTSIZE);
+            continue;
+        }
+        if (*ptep != 0)
+        {
+            return -E_INVAL;
+        }
+        va += PGSIZE;
+    }
+
+    int ret;
+    uintptr_t va = start;
+    while (va < end)
+    {
+        pte_t *ptep = get_pte(from, va, 0);
+        if (ptep == NULL)
+        {
+            // 缺少末级页表时，这张表覆盖的剩余地址都没有映射。
+            va = ROUNDDOWN(va + PTSIZE, PTSIZE);
+            continue;
+        }
+        if (!(*ptep & PTE_V))
+        {
+            va += PGSIZE;
+            continue;
+        }
+
+        struct Page *src = pte2page(*ptep);
+        struct Page *dst = src;
+        uint32_t perm = *ptep & PTE_USER;
+        if (!share)
+        {
+            // 普通 fork 为子进程分配独立物理页，再复制整页内容。
+            dst = alloc_page();
+            if (dst == NULL)
+            {
+                ret = -E_NO_MEM;
+                goto failed;
+            }
+            memcpy(page2kva(dst), page2kva(src), PGSIZE);
+        }
+        ret = page_insert(to, dst, va, perm);
+        if (ret != 0)
+        {
+            if (!share)
+            {
+                free_page(dst);
+            }
+            goto failed;
+        }
+        va += PGSIZE;
+    }
+    return 0;
+
+failed:
+    // 包含失败地址，回收建立映射时可能已分配的中间页表。
+    unmap_range(to, start, va + PGSIZE);
+    exit_range(to, start, va + PGSIZE);
+    return ret;
+}
 
 
 //LAB4 function1 2413276
